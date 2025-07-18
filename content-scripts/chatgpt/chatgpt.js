@@ -116,8 +116,41 @@ class ChatGPTAdapter {
       console.log('ContextZero: Removed existing button');
     }
     
-    // Default to floating button to avoid disrupting ChatGPT's layout
-    this.createFloatingButton();
+    // Try multiple strategies to find a suitable container
+    const strategies = [
+      () => document.querySelector('div[data-testid="composer-trailing-actions"]'),
+      () => document.querySelector('[data-testid="send-button"]')?.parentElement,
+      () => {
+        const sendBtn = document.querySelector('[data-testid="send-button"]');
+        return sendBtn?.closest('div[class*="flex"][class*="items-center"]');
+      },
+      () => document.querySelector('form')?.querySelector('div[class*="flex"]:last-child'),
+      () => document.querySelector('#prompt-textarea')?.parentElement?.parentElement,
+      () => document.querySelector('textarea')?.closest('form')?.querySelector('div[class*="flex"]'),
+      () => document.querySelector('main'),
+      () => document.body
+    ];
+    
+    let container = null;
+    for (let i = 0; i < strategies.length; i++) {
+      try {
+        container = strategies[i]();
+        if (container) {
+          console.log(`ContextZero: Found container using strategy ${i + 1}:`, container);
+          break;
+        }
+      } catch (e) {
+        console.log(`ContextZero: Strategy ${i + 1} failed:`, e);
+      }
+    }
+    
+    if (!container) {
+      console.log('ContextZero: No container found, using floating button as fallback');
+      this.createFloatingButton();
+      return;
+    }
+    
+    this.createButtonInContainer(container);
   }
 
   /**
@@ -192,7 +225,8 @@ class ChatGPTAdapter {
         display: inline-flex;
         align-items: center;
         position: relative;
-        margin: 0 4px;
+        margin: 0 2px;
+        flex-shrink: 0;
       `;
     
     // Create the button exactly like mem0 does
@@ -310,31 +344,25 @@ class ChatGPTAdapter {
       tooltip.style.visibility = 'hidden';
     });
     
-    // Insert button intelligently
-    // First try to find the send button and insert before it
-    const sendButton = container.querySelector('[data-testid="send-button"], button[aria-label*="Send"]');
-    if (sendButton && sendButton.parentElement === container) {
-      container.insertBefore(buttonContainer, sendButton);
+    // Insert button more carefully to avoid displacing other buttons
+    // Look for a specific place in the button group
+    const allButtons = Array.from(container.querySelectorAll('button'));
+    const micButton = allButtons.find(btn => {
+      const ariaLabel = btn.getAttribute('aria-label') || '';
+      return ariaLabel.toLowerCase().includes('mic') || ariaLabel.toLowerCase().includes('voice');
+    });
+    
+    if (micButton && micButton.parentElement === container) {
+      // Insert before the mic button to keep it and dictation together
+      container.insertBefore(buttonContainer, micButton);
     } else {
-      // Try to find any button in the container
-      const buttons = Array.from(container.querySelectorAll('button'));
-      const directChildButton = buttons.find(btn => btn.parentElement === container);
-      
+      // Find the first button that's a direct child
+      const directChildButton = allButtons.find(btn => btn.parentElement === container);
       if (directChildButton) {
         container.insertBefore(buttonContainer, directChildButton);
       } else {
-        // If container has flex layout, insert at the end but before any absolute positioned elements
-        const children = Array.from(container.children);
-        const lastNonAbsolute = children.reverse().find(child => {
-          const style = window.getComputedStyle(child);
-          return style.position !== 'absolute';
-        });
-        
-        if (lastNonAbsolute && lastNonAbsolute.nextSibling) {
-          container.insertBefore(buttonContainer, lastNonAbsolute.nextSibling);
-        } else {
-          container.appendChild(buttonContainer);
-        }
+        // As last resort, append to container
+        container.appendChild(buttonContainer);
       }
     }
     
