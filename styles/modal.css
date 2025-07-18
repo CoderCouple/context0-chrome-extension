@@ -1,0 +1,680 @@
+/* ContextZero Modal Styles - Dark/Light Theme Support */
+
+/* CSS Variables for Theme Colors */
+:root {
+  /* Dark Theme (Default) */
+  --cz-bg-primary: #000000;
+  --cz-bg-secondary: #1a1a1a;
+  --cz-bg-tertiary: #2a2a2a;
+  --cz-bg-hover: #333333;
+  --cz-bg-active: #404040;
+  
+  --cz-border-primary: #333333;
+  --cz-border-secondary: #444444;
+  
+  --cz-text-primary: #ffffff;
+  --cz-text-secondary: #cccccc;
+  --cz-text-tertiary: #999999;
+  
+  --cz-accent-primary: #ff6b35;
+  --cz-accent-hover: #ff8255;
+  --cz-accent-active: #ff5722;
+  
+  --cz-success: #4ade80;
+  --cz-warning: #fbbf24;
+  --cz-error: #ef4444;
+  --cz-info: #3b82f6;
+  
+  --cz-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --cz-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+
+/* Light Theme */
+[data-theme="light"] {
+  --cz-bg-primary: #ffffff;
+  --cz-bg-secondary: #f5f5f5;
+  --cz-bg-tertiary: #e5e5e5;
+  --cz-bg-hover: #e0e0e0;
+  --cz-bg-active: #d5d5d5;
+  
+  --cz-border-primary: #e0e0e0;
+  --cz-border-secondary: #d0d0d0;
+  
+  --cz-text-primary: #000000;
+  --cz-text-secondary: #333333;
+  --cz-text-tertiary: #666666;
+  
+  --cz-accent-primary: #ff6b35;
+  --cz-accent-hover: #ff5722;
+  --cz-accent-active: #e64a19;
+  
+  --cz-success: #22c55e;
+  --cz-warning: #f59e0b;
+  --cz-error: #dc2626;
+  --cz-info: #2563eb;
+  
+  --cz-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  --cz-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+/* Base Modal Styles */
+.contextzero-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  display: flex;
+  z-index: 10000;
+  pointer-events: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.contextzero-modal-container {
+  background-color: var(--cz-bg-secondary);
+  border-radius: 12px;
+  width: 447px;
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+  color: var(--cz-text-primary);
+  box-shadow: var(--cz-shadow-lg);
+  position: absolute;
+  pointer-events: auto;
+  border: 1px solid var(--cz-border-primary);
+  overflow: hidden;
+}
+
+.contextzero-modal-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  justify-content: space-between;
+  background-color: var(--cz-bg-primary);
+  border-bottom: 1px solid var(--cz-border-primary);
+  flex-shrink: 0;
+  cursor: move;
+  user-select: none;
+}
+
+.contextzero-modal-header-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.contextzero-modal-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background-color: var(--cz-accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: white;
+}
+
+.contextzero-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cz-text-primary);
+}
+
+.contextzero-modal-header-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.contextzero-add-to-prompt-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 5px 16px;
+  gap: 8px;
+  background-color: var(--cz-accent-primary);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  transition: all 0.2s;
+}
+
+.contextzero-add-to-prompt-btn:hover {
+  background-color: var(--cz-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+.contextzero-add-to-prompt-btn:active {
+  background-color: var(--cz-accent-active);
+  transform: translateY(0);
+}
+
+.contextzero-settings-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  color: var(--cz-text-secondary);
+  transition: all 0.2s;
+  border-radius: 8px;
+}
+
+.contextzero-settings-btn:hover {
+  color: var(--cz-accent-primary);
+  background-color: var(--cz-bg-tertiary);
+}
+
+.contextzero-modal-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px;
+  gap: 12px;
+  overflow: hidden;
+  flex: 1;
+  background-color: var(--cz-bg-secondary);
+}
+
+.contextzero-memories-counter {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cz-text-primary);
+  margin-top: 16px;
+  flex-shrink: 0;
+}
+
+.contextzero-memories-counter span {
+  color: var(--cz-accent-primary);
+}
+
+.contextzero-memories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 8px;
+  margin-right: -8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--cz-border-secondary) transparent;
+}
+
+.contextzero-memories-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.contextzero-memories-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.contextzero-memories-list::-webkit-scrollbar-thumb {
+  background-color: var(--cz-border-secondary);
+  border-radius: 3px;
+}
+
+.contextzero-memories-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--cz-accent-primary);
+}
+
+.contextzero-memory-item {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: var(--cz-bg-tertiary);
+  border: 1px solid var(--cz-border-primary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 72px;
+  max-height: 72px;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.contextzero-memory-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: transparent;
+  transition: background-color 0.2s ease;
+}
+
+.contextzero-memory-item:hover {
+  background-color: var(--cz-bg-hover);
+  border-color: var(--cz-accent-primary);
+}
+
+.contextzero-memory-item:hover::before {
+  background-color: var(--cz-accent-primary);
+}
+
+.contextzero-memory-item.expanded {
+  background-color: var(--cz-bg-primary);
+  max-height: 300px;
+  overflow: hidden;
+  border-color: var(--cz-accent-primary);
+}
+
+.contextzero-memory-item.expanded::before {
+  background-color: var(--cz-accent-primary);
+}
+
+.contextzero-memory-content {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  padding-left: 8px;
+}
+
+.contextzero-memory-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--cz-text-secondary);
+  flex-grow: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  height: 42px;
+}
+
+.contextzero-memory-text.expanded {
+  -webkit-line-clamp: unset;
+  height: auto;
+  overflow-y: auto;
+  max-height: 240px;
+  color: var(--cz-text-primary);
+}
+
+.contextzero-memory-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: 10px;
+  flex-shrink: 0;
+}
+
+.contextzero-memory-btn {
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  background: var(--cz-bg-hover);
+  color: var(--cz-text-secondary);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contextzero-memory-btn:hover {
+  background: var(--cz-accent-primary);
+  color: white;
+}
+
+.contextzero-remove-btn {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  background: var(--cz-error);
+  color: white;
+  border-radius: 8px;
+  padding: 4px 12px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  margin-top: 12px;
+  width: fit-content;
+  transition: all 0.2s ease;
+}
+
+.contextzero-remove-btn:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.contextzero-remove-btn.visible {
+  display: flex;
+}
+
+.contextzero-modal-navigation {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px;
+  border-top: 1px solid var(--cz-border-primary);
+  background-color: var(--cz-bg-primary);
+  flex-shrink: 0;
+}
+
+.contextzero-nav-btn {
+  background: var(--cz-bg-tertiary);
+  border: 1px solid var(--cz-border-primary);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--cz-text-secondary);
+}
+
+.contextzero-nav-btn:hover:not(:disabled) {
+  background-color: var(--cz-accent-primary);
+  color: white;
+  border-color: var(--cz-accent-primary);
+}
+
+.contextzero-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.contextzero-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  flex: 1;
+  min-height: 200px;
+}
+
+.contextzero-empty-state svg {
+  margin-bottom: 16px;
+  color: var(--cz-accent-primary);
+}
+
+.contextzero-empty-text {
+  color: var(--cz-text-tertiary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Loading Animation */
+@keyframes contextzero-pulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.3; }
+}
+
+@keyframes contextzero-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.contextzero-skeleton {
+  animation: contextzero-pulse 1.5s infinite ease-in-out;
+}
+
+.contextzero-skeleton-item {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: var(--cz-bg-tertiary);
+  border: 1px solid var(--cz-border-primary);
+  border-radius: 8px;
+  height: 72px;
+  flex-shrink: 0;
+}
+
+.contextzero-skeleton-text {
+  background-color: var(--cz-bg-hover);
+  border-radius: 4px;
+  height: 14px;
+  margin-bottom: 8px;
+}
+
+.contextzero-skeleton-text:first-child {
+  width: 85%;
+}
+
+.contextzero-skeleton-text:last-child {
+  width: 65%;
+}
+
+.contextzero-loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--cz-bg-tertiary);
+  border-top-color: var(--cz-accent-primary);
+  border-radius: 50%;
+  animation: contextzero-spin 1s linear infinite;
+}
+
+/* Status Messages */
+.contextzero-status-message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin: 12px 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid;
+}
+
+.contextzero-status-message.success {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: var(--cz-success);
+  border-color: var(--cz-success);
+}
+
+.contextzero-status-message.warning {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: var(--cz-warning);
+  border-color: var(--cz-warning);
+}
+
+.contextzero-status-message.error {
+  background-color: rgba(220, 38, 38, 0.1);
+  color: var(--cz-error);
+  border-color: var(--cz-error);
+}
+
+.contextzero-status-message.info {
+  background-color: rgba(37, 99, 235, 0.1);
+  color: var(--cz-info);
+  border-color: var(--cz-info);
+}
+
+/* Memory Button */
+.contextzero-btn {
+  background: var(--cz-bg-secondary);
+  border: 1px solid var(--cz-border-primary);
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 8px;
+  position: relative;
+  transition: all 0.2s ease;
+  font-size: 20px;
+  color: var(--cz-accent-primary);
+}
+
+.contextzero-btn:hover {
+  background-color: var(--cz-accent-primary);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+.contextzero-notification-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  background-color: var(--cz-accent-primary);
+  border-radius: 50%;
+  border: 2px solid var(--cz-bg-primary);
+  display: none;
+  z-index: 1001;
+  pointer-events: none;
+}
+
+@keyframes contextzero-pop-in {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.contextzero-notification-dot.active {
+  display: block !important;
+  animation: contextzero-pop-in 0.3s ease-out forwards;
+}
+
+/* Theme Toggle Button */
+.contextzero-theme-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  color: var(--cz-text-secondary);
+  transition: all 0.2s;
+  border-radius: 8px;
+}
+
+.contextzero-theme-toggle:hover {
+  color: var(--cz-accent-primary);
+  background-color: var(--cz-bg-tertiary);
+}
+
+/* Login Popup */
+.contextzero-login-popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10001;
+}
+
+[data-theme="light"] .contextzero-login-popup {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.contextzero-login-container {
+  background-color: var(--cz-bg-secondary);
+  border-radius: 12px;
+  width: 320px;
+  padding: 24px;
+  color: var(--cz-text-primary);
+  box-shadow: var(--cz-shadow-lg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  position: relative;
+  border: 1px solid var(--cz-border-primary);
+}
+
+.contextzero-login-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: var(--cz-text-tertiary);
+  font-size: 16px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.contextzero-login-close:hover {
+  color: var(--cz-accent-primary);
+}
+
+.contextzero-login-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.contextzero-login-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--cz-text-primary);
+}
+
+.contextzero-login-message {
+  margin-bottom: 24px;
+  color: var(--cz-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.contextzero-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px;
+  background-color: var(--cz-accent-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.contextzero-login-btn:hover {
+  background-color: var(--cz-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+.contextzero-login-btn img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  margin-right: 12px;
+}
+
+/* Utility Classes */
+.contextzero-hidden {
+  display: none !important;
+}
+
+.contextzero-visible {
+  display: block !important;
+}
+
+.contextzero-flex {
+  display: flex !important;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .contextzero-modal-container {
+    width: 90%;
+    max-width: 400px;
+  }
+}
+
+/* Default to dark theme - no system theme override */

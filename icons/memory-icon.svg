@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Brain emoji style icon -->
+  <g transform="translate(2, 2)">
+    <!-- Left hemisphere -->
+    <path d="M4 5 C2 3, 0 3, 0 5 C0 7, 1 9, 2 11 C3 13, 4 15, 6 17 C8 19, 10 20, 10 20 C10 20, 8 19, 6 17 C4 15, 3 13, 2 11 C1 9, 1 7, 4 5 Z" fill="#60A5FA" stroke="#3B82F6" stroke-width="0.5"/>
+    
+    <!-- Right hemisphere -->
+    <path d="M16 5 C18 3, 20 3, 20 5 C20 7, 19 9, 18 11 C17 13, 16 15, 14 17 C12 19, 10 20, 10 20 C10 20, 12 19, 14 17 C16 15, 17 13, 18 11 C19 9, 19 7, 16 5 Z" fill="#60A5FA" stroke="#3B82F6" stroke-width="0.5"/>
+    
+    <!-- Neural connections -->
+    <circle cx="5" cy="8" r="0.5" fill="#FCD34D"/>
+    <circle cx="15" cy="8" r="0.5" fill="#FCD34D"/>
+    <circle cx="10" cy="12" r="0.5" fill="#FCD34D"/>
+    <circle cx="7" cy="14" r="0.5" fill="#FCD34D"/>
+    <circle cx="13" cy="14" r="0.5" fill="#FCD34D"/>
+    
+    <!-- Connection lines -->
+    <line x1="5" y1="8" x2="10" y2="12" stroke="#FCD34D" stroke-width="0.3" opacity="0.6"/>
+    <line x1="15" y1="8" x2="10" y2="12" stroke="#FCD34D" stroke-width="0.3" opacity="0.6"/>
+    <line x1="7" y1="14" x2="10" y2="12" stroke="#FCD34D" stroke-width="0.3" opacity="0.6"/>
+    <line x1="13" y1="14" x2="10" y2="12" stroke="#FCD34D" stroke-width="0.3" opacity="0.6"/>
+  </g>
+</svg>
