@@ -7,17 +7,21 @@ class GeminiAdapter {
   constructor() {
     // Selectors for Gemini interface elements
     this.selectors = {
-      input: 'div[contenteditable="true"][data-testid="input-text"], div[contenteditable="true"].ql-editor',
-      sendButton: 'button[data-testid="send-button"], button[aria-label="Send message"]',
+      input: 'rich-textarea .ql-editor[contenteditable="true"], rich-textarea .ql-editor.textarea, .ql-editor[aria-label="Enter a prompt here"], .ql-editor.textarea.new-input-ui, .text-input-field_textarea .ql-editor, div[contenteditable="true"][role="textbox"][aria-label="Enter a prompt here"]',
+      sendButton: 'button[aria-label="Send message"], button[data-testid="send-button"], button[type="submit"]:not([aria-label*="attachment"]), .send-button, button[aria-label*="Send"], button[title*="Send"]',
       messageContainer: '[data-testid="message"], .message-content, .model-response-text',
       conversationContainer: 'main, [data-testid="conversation-container"]',
-      inputContainer: 'form, [data-testid="input-container"]'
+      inputContainer: 'form, [data-testid="input-container"]',
+      toolboxDrawer: 'toolbox-drawer .toolbox-drawer-container'
     };
     
     this.memoryManager = new MemoryManager();
     this.memoryExtractor = new MemoryExtractor();
     this.isInitialized = false;
     this.lastProcessedMessage = '';
+    this.allMemories = [];
+    this.allMemoriesById = new Set();
+    this.sendListenerAdded = false;
     
     this.init();
   }
@@ -33,7 +37,6 @@ class GeminiAdapter {
       this.setupAutoMemoryExtraction();
       this.setupMessageListener();
       this.isInitialized = true;
-      console.log('ContextZero: Gemini adapter initialized');
     } catch (error) {
       console.error('ContextZero: Failed to initialize Gemini adapter:', error);
     }
@@ -45,10 +48,10 @@ class GeminiAdapter {
   async waitForDOM() {
     return new Promise((resolve) => {
       const checkDOM = () => {
-        if (this.getInputElement()) {
+        if (this.getInputElement() || this.getToolboxDrawer()) {
           resolve();
         } else {
-          setTimeout(checkDOM, 500);
+          setTimeout(checkDOM, 100);
         }
       };
       checkDOM();
@@ -68,6 +71,14 @@ class GeminiAdapter {
   }
   
   /**
+   * Get the toolbox drawer container
+   * @returns {Element|null} Toolbox drawer element
+   */
+  getToolboxDrawer() {
+    return document.querySelector(this.selectors.toolboxDrawer);
+  }
+  
+  /**
    * Get current input text
    * @returns {string} Current input text
    */
@@ -77,22 +88,35 @@ class GeminiAdapter {
   }
   
   /**
-   * Set input text
+   * Set input text using ctx0's approach
    * @param {string} text - Text to set
    */
   setInputText(text) {
     const input = this.getInputElement();
     if (input) {
       if (input.contentEditable === 'true') {
-        // For contenteditable div
-        input.textContent = text;
+        // Clear existing content
+        input.innerHTML = '';
         
-        // Trigger input events for Gemini
+        // Split the text by newlines and create paragraph elements
+        const lines = text.split('\n');
+        lines.forEach((line, index) => {
+          const p = document.createElement('p');
+          if (line.trim() === '') {
+            p.innerHTML = '<br>';
+          } else {
+            p.textContent = line;
+          }
+          input.appendChild(p);
+        });
+        
+        // Trigger input event
         input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
         
         // Focus and set cursor to end
         input.focus();
+        
+        // Set cursor to end of content
         const range = document.createRange();
         const selection = window.getSelection();
         range.selectNodeContents(input);
@@ -103,7 +127,6 @@ class GeminiAdapter {
         // For regular input/textarea
         input.value = text;
         input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
       }
@@ -132,63 +155,243 @@ class GeminiAdapter {
   }
   
   /**
-   * Inject memory button into the interface
+   * Inject memory button using multiple strategies
    */
   injectMemoryButton() {
+    
+    // Remove existing button if any
+    const existingButton = document.querySelector('#contextzero-icon-button');
+    if (existingButton && existingButton.parentNode) {
+      existingButton.parentNode.remove();
+    }
+    
+    // Strategy 1: Try toolbox-drawer
+    const toolboxDrawer = this.getToolboxDrawer();
+    if (toolboxDrawer && !document.querySelector('#contextzero-icon-button')) {
+      this.createToolboxDrawerButton(toolboxDrawer);
+      return;
+    }
+    
+    // Strategy 2: Try near send button
+    const sendButton = this.getSendButton();
+    if (sendButton && !document.querySelector('#contextzero-icon-button')) {
+      this.createSendButtonStrategy(sendButton);
+      return;
+    }
+    
+    // Strategy 3: Try input container
+    const inputContainer = this.getInputContainer();
+    if (inputContainer && !document.querySelector('#contextzero-icon-button')) {
+      this.createInputContainerStrategy(inputContainer);
+      return;
+    }
+    
+    // Strategy 4: Fallback floating button
+    const inputElement = this.getInputElement();
+    if (inputElement && !document.querySelector('#contextzero-icon-button')) {
+      this.createFallbackButton(inputElement);
+      return;
+    }
+    
+  }
+  
+  /**
+   * Get send button
+   */
+  getSendButton() {
+    const sendSelectors = this.selectors.sendButton.split(', ');
+    for (const selector of sendSelectors) {
+      try {
+        const button = document.querySelector(selector);
+        if (button) return button;
+      } catch (e) {
+        // Skip invalid selector
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Get input container
+   */
+  getInputContainer() {
+    const input = this.getInputElement();
+    if (!input) return null;
+    
+    // Try various container strategies
+    const containers = [
+      input.closest('form'),
+      input.closest('[data-testid="input-container"]'),
+      input.closest('div[class*="input"]'),
+      input.parentElement
+    ];
+    
+    for (const container of containers) {
+      if (container && !container.querySelector('#contextzero-icon-button')) {
+        return container;
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Create button in toolbox drawer
+   */
+  createToolboxDrawerButton(toolboxDrawer) {
+    const contextZeroButton = new GeminiContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      }
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    toolboxDrawer.appendChild(buttonContainer);
+    this.updateNotificationDot();
+  }
+  
+  /**
+   * Create button near send button
+   */
+  createSendButtonStrategy(sendButton) {
+    const contextZeroButton = new GeminiContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin-right: 8px;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    sendButton.parentNode.insertBefore(buttonContainer, sendButton);
+    this.updateNotificationDot();
+  }
+  
+  /**
+   * Create button in input container
+   */
+  createInputContainerStrategy(inputContainer) {
+    const contextZeroButton = new GeminiContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin-left: 8px;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    inputContainer.appendChild(buttonContainer);
+    this.updateNotificationDot();
+  }
+  
+  /**
+   * Create fallback floating button
+   */
+  createFallbackButton(inputElement) {
+    const contextZeroButton = new GeminiContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        position: fixed;
+        bottom: 100px;
+        right: 24px;
+        z-index: 1000;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    document.body.appendChild(buttonContainer);
+    this.updateNotificationDot();
+  }
+  
+  /**
+   * Fallback button injection for when toolbox drawer is not available
+   */
+  injectFallbackButton() {
     const container = this.getButtonContainer();
     if (!container) {
       return;
     }
     
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'contextzero-memory-btn';
-    button.innerHTML = '🧠';
-    button.title = 'Add relevant memories to your prompt';
-    button.style.cssText = `
-      background: #4285f4;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      font-size: 16px;
-      margin-left: 8px;
-      padding: 8px 12px;
-      transition: all 0.2s;
-      position: relative;
-      z-index: 1000;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    `;
-    
-    // Hover effects
-    button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = '#3367d6';
-      button.style.transform = 'scale(1.05)';
+    // Create the button using the Gemini-specific component
+    const contextZeroButton = new GeminiContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin-left: 8px;
+      `
     });
     
-    button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = '#4285f4';
-      button.style.transform = 'scale(1)';
-    });
+    const buttonContainer = contextZeroButton.createContainer();
     
-    // Click handler
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      await this.handleMemoryButtonClick();
-    });
+    // Store reference for updating notification dot
+    this.contextZeroButton = contextZeroButton;
     
     // Insert button next to the input
     const input = this.getInputElement();
-    if (input.nextSibling) {
-      container.insertBefore(button, input.nextSibling);
+    if (input && input.nextSibling) {
+      container.insertBefore(buttonContainer, input.nextSibling);
     } else {
-      container.appendChild(button);
+      container.appendChild(buttonContainer);
     }
     
-    console.log('ContextZero: Gemini memory button injected');
+    // Update notification dot based on input content
+    this.updateNotificationDot();
   }
   
+  /**
+   * Update notification dot based on input content
+   */
+  updateNotificationDot() {
+    const inputElement = this.getInputElement();
+    
+    if (!inputElement || !this.contextZeroButton) {
+      // If elements aren't found, try again after a short delay
+      setTimeout(() => this.updateNotificationDot(), 1000);
+      return;
+    }
+    
+    // Function to check if input has text
+    const checkForText = () => {
+      const inputText = inputElement.textContent || inputElement.innerText || inputElement.value || '';
+      const hasText = inputText.trim() !== '';
+      
+      // Use the common button component's method
+      this.contextZeroButton.updateNotificationDot(hasText);
+    };
+    
+    // Setup mutation observer for the input element to detect changes
+    const observer = new MutationObserver(checkForText);
+    observer.observe(inputElement, { 
+      childList: true, 
+      characterData: true, 
+      subtree: true,
+      attributes: true
+    });
+    
+    // Also listen for direct input events
+    inputElement.addEventListener('input', checkForText);
+    inputElement.addEventListener('keyup', checkForText);
+    inputElement.addEventListener('focus', checkForText);
+    
+    // Initial check
+    checkForText();
+    
+    // Force another check after a small delay
+    setTimeout(checkForText, 500);
+  }
+
   /**
    * Handle memory button click
    */
@@ -202,9 +405,11 @@ class GeminiAdapter {
       
       // Show loading state
       const button = document.querySelector('.contextzero-memory-btn');
-      const originalContent = button.innerHTML;
-      button.innerHTML = '⏳';
-      button.disabled = true;
+      const originalContent = button ? button.innerHTML : '';
+      if (button) {
+        button.innerHTML = '⏳';
+        button.disabled = true;
+      }
       
       // Search for relevant memories
       const memories = await this.memoryManager.searchMemories(inputText, {
@@ -214,8 +419,10 @@ class GeminiAdapter {
       });
       
       // Restore button
-      button.innerHTML = originalContent;
-      button.disabled = false;
+      if (button) {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+      }
       
       if (memories.length === 0) {
         alert('No relevant memories found for your message.');
@@ -273,31 +480,79 @@ class GeminiAdapter {
     const newText = currentText + formattedMemories;
     this.setInputText(newText);
     
-    console.log(`ContextZero: Injected ${memories.length} memories into Gemini prompt`);
   }
   
   /**
-   * Setup message capture for memory extraction
+   * Setup message capture for memory extraction using ctx0's approach
    */
   setupMessageCapture() {
-    // Listen for send button clicks
-    document.addEventListener('click', async (event) => {
-      const sendButton = event.target.closest(this.selectors.sendButton);
-      if (sendButton) {
-        await this.captureUserMessage();
-      }
-    });
+    // Prevent duplicate listener registration
+    if (this.sendListenerAdded) {
+      return;
+    }
     
-    // Listen for Enter key in input
-    document.addEventListener('keydown', async (event) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        const input = event.target;
-        if (input.matches && input.matches(this.selectors.input)) {
-          // Small delay to ensure message is processed
-          setTimeout(() => this.captureUserMessage(), 100);
-        }
+    // Handle capturing and storing the current message
+    const captureAndStoreMemory = async () => {
+      const inputElement = this.getInputElement();
+      if (!inputElement) {
+        return;
       }
-    });
+      
+      const message = (inputElement.textContent || inputElement.innerText || inputElement.value || '').trim();
+      if (!message) {
+        return;
+      }
+      
+      // Extract and store memories asynchronously
+      await this.memoryManager.storeMemory(message, {
+        platform: 'gemini',
+        url: window.location.href,
+        timestamp: Date.now()
+      });
+      
+      // Clear all memories after sending
+      setTimeout(() => {
+        this.allMemories = [];
+        this.allMemoriesById.clear();
+      }, 100);
+    };
+    
+    // Get send button and add listener
+    const sendSelectors = this.selectors.sendButton.split(', ');
+    let sendButton = null;
+    
+    for (const selector of sendSelectors) {
+      try {
+        sendButton = document.querySelector(selector);
+        if (sendButton) break;
+      } catch (e) {
+        // Skip invalid selector
+      }
+    }
+    
+    if (sendButton && !sendButton.dataset.contextzeroListener) {
+      sendButton.dataset.contextzeroListener = 'true';
+      sendButton.addEventListener('click', captureAndStoreMemory);
+    }
+    
+    // Handle textarea for Enter key press
+    const inputElement = this.getInputElement();
+    
+    if (inputElement && !inputElement.dataset.contextzeroKeyListener) {
+      inputElement.dataset.contextzeroKeyListener = 'true';
+      inputElement.addEventListener('keydown', (event) => {
+        // Check if Enter was pressed without Shift (standard send behavior)
+        if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+          // The send button click will handle the capture
+          return;
+        }
+      });
+    }
+    
+    // Mark as added if we set up both elements
+    if (inputElement && sendButton) {
+      this.sendListenerAdded = true;
+    }
   }
   
   /**
@@ -320,7 +575,6 @@ class GeminiAdapter {
       });
       
       if (memories.length > 0) {
-        console.log(`ContextZero: Extracted ${memories.length} memories from Gemini message`);
       }
       
     } catch (error) {
@@ -461,7 +715,6 @@ class GeminiAdapter {
       });
       
       if (memories.length > 0) {
-        console.log(`ContextZero: Added ${memories.length} memories from selected text`);
       }
     } catch (error) {
       console.error('ContextZero: Error adding selected text as memory:', error);
@@ -496,7 +749,6 @@ class GeminiAdapter {
   async deleteMemory(id) {
     try {
       await this.memoryManager.deleteMemory(id);
-      console.log('ContextZero: Memory deleted');
     } catch (error) {
       console.error('ContextZero: Error deleting memory:', error);
     }
@@ -508,7 +760,6 @@ class GeminiAdapter {
   async clearAllMemories() {
     try {
       await this.memoryManager.clearAllMemories();
-      console.log('ContextZero: All memories cleared');
     } catch (error) {
       console.error('ContextZero: Error clearing memories:', error);
     }
@@ -530,7 +781,6 @@ class GeminiAdapter {
       a.click();
       
       URL.revokeObjectURL(url);
-      console.log('ContextZero: Memories exported');
     } catch (error) {
       console.error('ContextZero: Error exporting memories:', error);
     }
@@ -543,9 +793,13 @@ class GeminiAdapter {
     if (this.isInitialized) {
       // Re-inject button if needed
       setTimeout(() => {
-        if (!document.querySelector('.contextzero-memory-btn')) {
+        if (!document.querySelector('#contextzero-icon-button')) {
           this.injectMemoryButton();
         }
+        // Update notification dot
+        this.updateNotificationDot();
+        // Re-setup message capture
+        this.setupMessageCapture();
       }, 1000);
     }
   }
@@ -567,6 +821,24 @@ function initializeGeminiAdapter() {
       }
     }, 1000);
     
+    // Check more frequently initially, then less frequently
+    let checkCount = 0;
+    const checkInterval = setInterval(() => {
+      if (!document.querySelector('#contextzero-icon-button')) {
+        adapter.injectMemoryButton();
+      }
+      checkCount++;
+      // After 20 checks (10 seconds), reduce frequency to every 5 seconds
+      if (checkCount >= 20) {
+        clearInterval(checkInterval);
+        setInterval(() => {
+          if (!document.querySelector('#contextzero-icon-button')) {
+            adapter.injectMemoryButton();
+          }
+        }, 5000);
+      }
+    }, 500);
+    
     // Make adapter globally available for debugging
     window.contextZeroGemini = adapter;
   }
@@ -579,11 +851,11 @@ if (document.readyState === 'loading') {
   initializeGeminiAdapter();
 }
 
-// Handle dynamic page loads
+// Handle dynamic page loads - check more frequently initially
 let initTimeout;
 const observer = new MutationObserver(() => {
   clearTimeout(initTimeout);
-  initTimeout = setTimeout(initializeGeminiAdapter, 500);
+  initTimeout = setTimeout(initializeGeminiAdapter, 100);
 });
 
 observer.observe(document.body, {
@@ -591,4 +863,3 @@ observer.observe(document.body, {
   subtree: true
 });
 
-console.log('ContextZero: Gemini content script loaded');

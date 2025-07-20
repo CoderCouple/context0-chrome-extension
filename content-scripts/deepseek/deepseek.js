@@ -5,13 +5,13 @@
 
 class DeepSeekAdapter {
   constructor() {
-    // Selectors for DeepSeek interface elements
+    // Selectors for DeepSeek interface elements (based on mem0 reference)
     this.selectors = {
-      input: 'textarea[placeholder*="Type"], textarea[data-testid="chat-input"], div[contenteditable="true"]',
-      sendButton: 'button[data-testid="send-button"], button[aria-label="Send"], button[type="submit"]',
-      messageContainer: '[data-testid="message"], .message, .chat-message',
-      conversationContainer: 'main, .chat-container, .conversation-container',
-      inputContainer: 'form, .input-container, .chat-input-container'
+      input: "#chat-input, textarea, [contenteditable='true']",
+      sendButton: 'div[role="button"] svg',
+      messageContainer: '.prose, [data-testid="message"], .message',
+      conversationContainer: 'main, [data-testid="conversation"], [role="main"]',
+      inputContainer: 'form, [data-testid="input-container"], div[class*="input"]'
     };
     
     this.memoryManager = new MemoryManager();
@@ -56,14 +56,54 @@ class DeepSeekAdapter {
   }
   
   /**
-   * Get the input element
+   * Get the input element using mem0's approach
    * @returns {Element|null} Input element
    */
   getInputElement() {
-    for (const selector of this.selectors.input.split(', ')) {
-      const element = document.querySelector(selector);
-      if (element) return element;
+    // Try finding with the more specific selector first
+    const inputElement = document.querySelector(this.selectors.input);
+    
+    if (inputElement) {
+      return inputElement;
     }
+    
+    // If not found, try a more general approach like mem0
+    
+    // Try finding by common input attributes
+    const textareas = document.querySelectorAll('textarea');
+    if (textareas.length > 0) {
+      // Return the textarea that's visible and has the largest area (likely the main input)
+      let bestMatch = null;
+      let largestArea = 0;
+      
+      for (const textarea of textareas) {
+        const rect = textarea.getBoundingClientRect();
+        const isVisible = rect.width > 0 && rect.height > 0;
+        const area = rect.width * rect.height;
+        
+        if (isVisible && area > largestArea) {
+          largestArea = area;
+          bestMatch = textarea;
+        }
+      }
+      
+      if (bestMatch) {
+        return bestMatch;
+      }
+    }
+    
+    // Try contenteditable divs
+    const editableDivs = document.querySelectorAll('[contenteditable="true"]');
+    if (editableDivs.length > 0) {
+      return editableDivs[0];
+    }
+    
+    // Try any element with role="textbox"
+    const textboxes = document.querySelectorAll('[role="textbox"]');
+    if (textboxes.length > 0) {
+      return textboxes[0];
+    }
+    
     return null;
   }
   
@@ -73,12 +113,110 @@ class DeepSeekAdapter {
    */
   getInputText() {
     const input = this.getInputElement();
-    if (!input) return '';
-    
-    if (input.contentEditable === 'true') {
-      return input.textContent || input.innerText || '';
+    return input ? (input.value || input.textContent || '') : '';
+  }
+
+  /**
+   * Get send button element using mem0's approach
+   * @returns {Element|null} Send button
+   */
+  getSendButtonElement() {
+    try {
+      // Strategy 1: Look for buttons with send-like characteristics
+      const buttons = document.querySelectorAll('div[role="button"]');
+      
+      if (buttons.length === 0) {
+        return null;
+      }
+      
+      // Get the input element to help with positioning-based detection
+      const inputElement = this.getInputElement();
+      const inputRect = inputElement ? inputElement.getBoundingClientRect() : null;
+      
+      // Find candidate buttons that might be send buttons
+      let bestSendButton = null;
+      let bestScore = 0;
+      
+      for (const button of buttons) {
+        // Skip if button is not visible or has no size
+        const buttonRect = button.getBoundingClientRect();
+        if (buttonRect.width === 0 || buttonRect.height === 0) {
+          continue;
+        }
+        
+        let score = 0;
+        
+        // 1. Check if it has an SVG (likely an icon button)
+        const svg = button.querySelector('svg');
+        if (svg) score += 2;
+        
+        // 2. Check if it has no text content (icon-only buttons)
+        const buttonText = button.textContent.trim();
+        if (buttonText === '') score += 2;
+        
+        // 3. Check if it contains a paper airplane shape (common in send buttons)
+        const paths = svg ? svg.querySelectorAll('path') : [];
+        if (paths.length > 0) score += 1;
+        
+        // 4. Check positioning relative to input (send buttons are usually close to input)
+        if (inputRect) {
+          // Check if button is positioned to the right of input
+          if (buttonRect.left > inputRect.left) score += 1;
+          
+          // Check if button is at similar height to input
+          if (Math.abs(buttonRect.top - inputRect.top) < 100) score += 2;
+          
+          // Check if button is very close to input (right next to it)
+          if (Math.abs(buttonRect.left - (inputRect.right + 20)) < 40) score += 3;
+        }
+        
+        // 5. Check for DeepSeek specific classes
+        if (button.classList.contains('ds-button--primary')) score += 2;
+        
+        // Update best match if this button has a higher score
+        if (score > bestScore) {
+          bestScore = score;
+          bestSendButton = button;
+        }
+      }
+      
+      // Return best match if score is reasonable
+      if (bestScore >= 4) {
+        return bestSendButton;
+      }
+      
+      // Strategy 2: Look for buttons positioned at the right of the input
+      if (inputElement) {
+        // Find buttons positioned to the right of the input
+        const rightButtons = Array.from(buttons).filter(button => {
+          const buttonRect = button.getBoundingClientRect();
+          return buttonRect.left > inputRect.right - 50 && // To the right
+                 Math.abs(buttonRect.top - inputRect.top) < 50; // Similar height
+        });
+        
+        // Sort by horizontal proximity to input
+        rightButtons.sort((a, b) => {
+          const aRect = a.getBoundingClientRect();
+          const bRect = b.getBoundingClientRect();
+          return (aRect.left - inputRect.right) - (bRect.left - inputRect.right);
+        });
+        
+        // Return the closest button
+        if (rightButtons.length > 0) {
+          return rightButtons[0];
+        }
+      }
+      
+      // Strategy 3: Last resort - take the last button with an SVG
+      const svgButtons = Array.from(buttons).filter(button => button.querySelector('svg'));
+      if (svgButtons.length > 0) {
+        return svgButtons[svgButtons.length - 1];
+      }
+      
+      return null;
+    } catch (e) {
+      return null; // Return null on error instead of failing
     }
-    return input.value || '';
   }
   
   /**
@@ -116,87 +254,183 @@ class DeepSeekAdapter {
   }
   
   /**
-   * Get container for injecting memory button
-   * @returns {Element|null} Button container
+   * Inject memory button into the interface using mem0's approach
    */
-  getButtonContainer() {
-    const input = this.getInputElement();
-    if (!input) return null;
-    
-    const inputContainer = input.closest(this.selectors.inputContainer);
-    if (inputContainer && !inputContainer.querySelector('.contextzero-memory-btn')) {
-      return inputContainer;
+  async injectMemoryButton() {
+    // Remove existing button if any
+    const existingButton = document.querySelector('#contextzero-icon-button');
+    if (existingButton && existingButton.parentNode) {
+      existingButton.parentNode.remove();
     }
     
-    const form = input.closest('form');
-    if (form && !form.querySelector('.contextzero-memory-btn')) {
-      return form;
-    }
-    
-    const container = input.parentElement;
-    if (container && !container.querySelector('.contextzero-memory-btn')) {
-      return container;
-    }
-    
-    return null;
-  }
-  
-  /**
-   * Inject memory button into the interface
-   */
-  injectMemoryButton() {
-    const container = this.getButtonContainer();
-    if (!container) {
+    // Wait for input element to be available
+    const inputElement = this.getInputElement();
+    if (!inputElement) {
+      // Retry in 1 second
+      setTimeout(() => this.injectMemoryButton(), 1000);
       return;
     }
     
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'contextzero-memory-btn';
-    button.innerHTML = '🧠';
-    button.title = 'Add relevant memories to your prompt';
-    button.style.cssText = `
-      background: #6c5ce7;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      font-size: 16px;
-      margin-left: 8px;
-      padding: 8px 12px;
-      transition: all 0.2s;
-      position: relative;
-      z-index: 1000;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    `;
+    // Try multiple approaches to find placement locations
+    let buttonContainer = null;
+    let status = "searching";
     
-    // Hover effects
-    button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = '#5a4fcf';
-      button.style.transform = 'scale(1.05)';
-    });
-    
-    button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = '#6c5ce7';
-      button.style.transform = 'scale(1)';
-    });
-    
-    // Click handler
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      await this.handleMemoryButtonClick();
-    });
-    
-    // Insert button next to the input
-    const input = this.getInputElement();
-    if (input.nextSibling) {
-      container.insertBefore(button, input.nextSibling);
-    } else {
-      container.appendChild(button);
+    // Approach 1: Look for search button and its container
+    const searchButtons = document.querySelectorAll('div[role="button"]');
+    let searchButton = null;
+    for (const button of searchButtons) {
+      const buttonText = button.textContent.trim();
+      const hasSearchSpan = button.querySelector('span') && button.querySelector('span').textContent.trim().toLowerCase() === 'search';
+      if (buttonText.toLowerCase() === 'search' || hasSearchSpan) {
+        // Found search button, get its parent container
+        searchButton = button;
+        buttonContainer = button.parentElement;
+        status = "found_search_button_container";
+        break;
+      }
     }
     
-    console.log('ContextZero: DeepSeek memory button injected');
+    // Approach 2: Look for any toolbar or button container
+    if (!buttonContainer) {
+      const toolbars = document.querySelectorAll('.toolbar, .button-container, .controls, div[role="toolbar"]');
+      if (toolbars.length > 0) {
+        buttonContainer = toolbars[0];
+        status = "found_toolbar";
+      }
+    }
+    
+    // Approach 3: Try to find the input field and place it near there
+    if (!buttonContainer) {
+      if (inputElement && inputElement.parentElement) {
+        // Try going up a few levels to find a good container
+        let parent = inputElement.parentElement;
+        let level = 0;
+        while (parent && level < 3) {
+          const buttons = parent.querySelectorAll('div[role="button"]');
+          if (buttons.length > 0) {
+            buttonContainer = parent;
+            status = "found_input_parent_with_buttons";
+            break;
+          }
+          parent = parent.parentElement;
+          level++;
+        }
+        
+        // If still not found, use direct parent
+        if (!buttonContainer) {
+          buttonContainer = inputElement.parentElement;
+          status = "found_input_parent";
+        }
+      }
+    }
+    
+    // If we couldn't find a suitable container, create one near the input
+    if (!buttonContainer && inputElement) {
+      const inputRect = inputElement.getBoundingClientRect();
+      buttonContainer = document.createElement('div');
+      buttonContainer.id = 'contextzero-custom-container';
+      buttonContainer.style.cssText = `
+        display: flex;
+        position: fixed;
+        top: ${inputRect.top - 40}px;
+        left: ${inputRect.right - 100}px;
+        z-index: 1000;
+      `;
+      document.body.appendChild(buttonContainer);
+      status = "created_custom_container";
+    }
+    
+    // If we couldn't find a suitable container, bail out
+    if (!buttonContainer) {
+      return;
+    }
+    
+    // Create button using DeepSeek styling
+    const contextZeroButton = new DeepSeekContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      }
+    });
+    
+    const buttonElement = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    // Insert the button in the appropriate position
+    try {
+      if (status === "found_search_button_container") {
+        // Position after the search button in the same container
+        const foundSearchButton = buttonContainer.querySelector('div[role="button"]');
+        if (foundSearchButton) {
+          // Insert immediately after the search button
+          if (foundSearchButton.nextSibling) {
+            buttonContainer.insertBefore(buttonElement, foundSearchButton.nextSibling);
+          } else {
+            buttonContainer.appendChild(buttonElement);
+          }
+        } else {
+          buttonContainer.appendChild(buttonElement);
+        }
+      } else if (status === "found_toolbar") {
+        // Find an appropriate position in the toolbar - prefer the right side
+        const lastChild = buttonContainer.lastChild;
+        if (lastChild) {
+          buttonContainer.insertBefore(buttonElement, null); // append to end
+        } else {
+          buttonContainer.appendChild(buttonElement);
+        }
+      } else if (status === "created_custom_container") {
+        // Custom container - just append
+        buttonContainer.appendChild(buttonElement);
+      } else {
+        // Other cases - try to position after any buttons in the container
+        const buttons = buttonContainer.querySelectorAll('div[role="button"]');
+        if (buttons.length > 0) {
+          const lastButton = buttons[buttons.length - 1];
+          buttonContainer.insertBefore(buttonElement, lastButton.nextSibling);
+        } else {
+          buttonContainer.appendChild(buttonElement);
+        }
+      }
+    } catch (e) {
+      console.error('ContextZero: Failed to insert button:', e);
+    }
+    
+    this.updateNotificationDot();
+  }
+
+  /**
+   * Update notification dot based on input content
+   */
+  updateNotificationDot() {
+    const inputElement = this.getInputElement();
+    
+    if (!inputElement || !this.contextZeroButton) {
+      setTimeout(() => this.updateNotificationDot(), 1000);
+      return;
+    }
+    
+    const checkForText = () => {
+      const inputText = inputElement.value || inputElement.textContent || '';
+      const hasText = inputText.trim() !== '';
+      
+      this.contextZeroButton.updateNotificationDot(hasText);
+    };
+    
+    const observer = new MutationObserver(checkForText);
+    observer.observe(inputElement, { 
+      childList: true, 
+      characterData: true, 
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['value'] 
+    });
+    
+    inputElement.addEventListener('input', checkForText);
+    inputElement.addEventListener('keyup', checkForText);
+    inputElement.addEventListener('focus', checkForText);
+    
+    checkForText();
+    setTimeout(checkForText, 500);
   }
   
   /**
@@ -211,10 +445,12 @@ class DeepSeekAdapter {
       }
       
       // Show loading state
-      const button = document.querySelector('.contextzero-memory-btn');
-      const originalContent = button.innerHTML;
-      button.innerHTML = '⏳';
-      button.disabled = true;
+      const button = document.querySelector('#contextzero-icon-button');
+      const originalContent = button ? button.innerHTML : '';
+      if (button) {
+        button.innerHTML = '⏳';
+        button.disabled = true;
+      }
       
       // Search for relevant memories
       const memories = await this.memoryManager.searchMemories(inputText, {
@@ -224,8 +460,10 @@ class DeepSeekAdapter {
       });
       
       // Restore button
-      button.innerHTML = originalContent;
-      button.disabled = false;
+      if (button) {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+      }
       
       if (memories.length === 0) {
         alert('No relevant memories found for your message.');
@@ -239,7 +477,7 @@ class DeepSeekAdapter {
       console.error('ContextZero: Error handling memory button click:', error);
       
       // Restore button on error
-      const button = document.querySelector('.contextzero-memory-btn');
+      const button = document.querySelector('#contextzero-icon-button');
       if (button) {
         button.innerHTML = '🧠';
         button.disabled = false;
@@ -292,8 +530,8 @@ class DeepSeekAdapter {
   setupMessageCapture() {
     // Listen for send button clicks
     document.addEventListener('click', async (event) => {
-      const sendButton = event.target.closest(this.selectors.sendButton);
-      if (sendButton) {
+      const sendButton = this.getSendButtonElement();
+      if (sendButton && (event.target === sendButton || sendButton.contains(event.target))) {
         await this.captureUserMessage();
       }
     });
@@ -553,7 +791,7 @@ class DeepSeekAdapter {
     if (this.isInitialized) {
       // Re-inject button if needed
       setTimeout(() => {
-        if (!document.querySelector('.contextzero-memory-btn')) {
+        if (!document.querySelector('#contextzero-icon-button')) {
           this.injectMemoryButton();
         }
       }, 1000);

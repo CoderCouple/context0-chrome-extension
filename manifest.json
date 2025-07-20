@@ -14,7 +14,9 @@
     "*://chat.openai.com/*",
     "*://claude.ai/*",
     "*://perplexity.ai/*",
+    "*://www.perplexity.ai/*",
     "*://x.ai/*",
+    "*://grok.com/*",
     "*://gemini.google.com/*",
     "*://bard.google.com/*",
     "*://ai.google.dev/*",
@@ -24,32 +26,32 @@
   "content_scripts": [
     {
       "matches": ["*://chatgpt.com/*", "*://chat.openai.com/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "content-scripts/chatgpt/chatgpt.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/chatgpt-button.js", "content-scripts/chatgpt/chatgpt.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://claude.ai/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "content-scripts/claude/claude.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/claude-button.js", "content-scripts/claude/claude.js"],
       "css": ["styles/modal.css"]
     },
     {
-      "matches": ["*://perplexity.ai/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "content-scripts/perplexity/perplexity.js"],
+      "matches": ["*://perplexity.ai/*", "*://www.perplexity.ai/*"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/perplexity-button.js", "content-scripts/perplexity/perplexity.js"],
       "css": ["styles/modal.css"]
     },
     {
-      "matches": ["*://x.ai/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "content-scripts/grok/grok.js"],
+      "matches": ["*://x.ai/*", "*://grok.com/*"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/grok-button.js", "content-scripts/grok/grok.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://gemini.google.com/*", "*://bard.google.com/*", "*://ai.google.dev/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "content-scripts/gemini/gemini.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/gemini-button.js", "content-scripts/gemini/gemini.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://deepseek.com/*", "*://chat.deepseek.com/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "content-scripts/deepseek/deepseek.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/deepseek-button.js", "content-scripts/deepseek/deepseek.js"],
       "css": ["styles/modal.css"]
     }
   ],

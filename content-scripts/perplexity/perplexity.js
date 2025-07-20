@@ -7,11 +7,12 @@ class PerplexityAdapter {
   constructor() {
     // Selectors for Perplexity interface elements
     this.selectors = {
-      input: 'textarea[placeholder*="Ask anything"], textarea[data-testid="search-input"]',
-      sendButton: 'button[aria-label="Submit"], button[data-testid="submit-button"]',
-      messageContainer: '.prose',
-      conversationContainer: 'main',
-      inputContainer: 'form'
+      input: '#ask-input, div[contenteditable="true"], textarea[placeholder*="Ask"], input[type="text"]',
+      sendButton: 'button[aria-label*="Submit"], button[data-testid*="submit"], button[type="submit"], button svg',
+      messageContainer: '.prose, [data-testid="message"], .message',
+      conversationContainer: 'main, [data-testid="conversation"], [role="main"]',
+      inputContainer: 'form, [data-testid="input-container"], div[class*="input"]',
+      modelSelectionButton: 'button[aria-label="Choose a model"]'
     };
     
     this.memoryManager = new MemoryManager();
@@ -33,7 +34,6 @@ class PerplexityAdapter {
       this.setupAutoMemoryExtraction();
       this.setupMessageListener();
       this.isInitialized = true;
-      console.log('ContextZero: Perplexity adapter initialized');
     } catch (error) {
       console.error('ContextZero: Failed to initialize Perplexity adapter:', error);
     }
@@ -45,7 +45,8 @@ class PerplexityAdapter {
   async waitForDOM() {
     return new Promise((resolve) => {
       const checkDOM = () => {
-        if (this.getInputElement()) {
+        const inputElement = this.getInputElement();
+        if (inputElement) {
           resolve();
         } else {
           setTimeout(checkDOM, 500);
@@ -60,10 +61,29 @@ class PerplexityAdapter {
    * @returns {Element|null} Input element
    */
   getInputElement() {
+    // Log all available elements for debugging
+    
     for (const selector of this.selectors.input.split(', ')) {
-      const element = document.querySelector(selector);
-      if (element) return element;
+      try {
+        const element = document.querySelector(selector);
+        if (element) {
+          return element;
+        }
+      } catch (e) {
+      }
     }
+    
+    // Try fallback - look for any textarea or input
+    const fallbackTextarea = document.querySelector('textarea');
+    if (fallbackTextarea) {
+      return fallbackTextarea;
+    }
+    
+    const fallbackInput = document.querySelector('input[type="text"]');
+    if (fallbackInput) {
+      return fallbackInput;
+    }
+    
     return null;
   }
   
@@ -73,7 +93,7 @@ class PerplexityAdapter {
    */
   getInputText() {
     const input = this.getInputElement();
-    return input ? input.value : '';
+    return input ? (input.textContent || input.value || '') : '';
   }
   
   /**
@@ -83,13 +103,29 @@ class PerplexityAdapter {
   setInputText(text) {
     const input = this.getInputElement();
     if (input) {
-      input.value = text;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      
-      // Focus and set cursor to end
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
+      if (input.contentEditable === 'true') {
+        // Handle contenteditable div (like Perplexity's #ask-input)
+        input.textContent = text;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        // Focus and set cursor to end
+        input.focus();
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.selectNodeContents(input);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } else {
+        // Handle regular input/textarea
+        input.value = text;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // Focus and set cursor to end
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
     }
   }
   
@@ -97,79 +133,196 @@ class PerplexityAdapter {
    * Get container for injecting memory button
    * @returns {Element|null} Button container
    */
-  getButtonContainer() {
+  getModelSelectionButton() {
+    const button = document.querySelector(this.selectors.modelSelectionButton);
+    if (button) {
+      return button;
+    }
+    return null;
+  }
+
+  getSendButton() {
+    const selectors = this.selectors.sendButton.split(', ');
+    for (const selector of selectors) {
+      try {
+        const button = document.querySelector(selector);
+        if (button) return button;
+      } catch (e) {
+        // Skip invalid selector
+      }
+    }
+    return null;
+  }
+
+  getInputContainer() {
     const input = this.getInputElement();
     if (!input) return null;
     
-    const form = input.closest('form');
-    if (form && !form.querySelector('.contextzero-memory-btn')) {
-      return form;
-    }
+    const containers = [
+      input.closest('form'),
+      input.closest('[data-testid="input-container"]'),
+      input.closest('div[class*="input"]'),
+      input.parentElement
+    ];
     
-    const container = input.parentElement;
-    if (container && !container.querySelector('.contextzero-memory-btn')) {
-      return container;
+    for (const container of containers) {
+      if (container && !container.querySelector('#contextzero-icon-button')) {
+        return container;
+      }
     }
-    
     return null;
   }
   
   /**
    * Inject memory button into the interface
    */
+  createModelSelectionButton(modelButton) {
+    const contextZeroButton = new PerplexityContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      }
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    // Use exact mem0 approach - find the specific button container
+    const buttonContainer_parent = modelButton.closest('.bg-background-50.dark\\:bg-offsetDark.flex.items-center.justify-self-end.rounded-full');
+    
+    if (buttonContainer_parent) {
+      // Insert at the beginning like mem0 does
+      buttonContainer_parent.insertBefore(buttonContainer, buttonContainer_parent.firstChild);
+    } else {
+      // Fallback approach
+      const fallbackContainer = modelButton.closest('.flex.items-center') || modelButton.parentNode;
+      if (fallbackContainer) {
+        fallbackContainer.insertBefore(buttonContainer, modelButton);
+      }
+    }
+    
+    this.updateNotificationDot();
+  }
+
+  createSendButtonStrategy(sendButton) {
+    const contextZeroButton = new PerplexityContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin-right: 8px;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    sendButton.parentNode.insertBefore(buttonContainer, sendButton);
+    this.updateNotificationDot();
+  }
+
+  createInputContainerStrategy(inputContainer) {
+    const contextZeroButton = new PerplexityContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin-left: 8px;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    inputContainer.appendChild(buttonContainer);
+    this.updateNotificationDot();
+  }
+
+  createFallbackButton(inputElement) {
+    const contextZeroButton = new PerplexityContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        position: fixed;
+        bottom: 100px;
+        right: 24px;
+        z-index: 1000;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    this.contextZeroButton = contextZeroButton;
+    
+    document.body.appendChild(buttonContainer);
+    this.updateNotificationDot();
+  }
+
   injectMemoryButton() {
-    const container = this.getButtonContainer();
-    if (!container) {
+    
+    const existingButton = document.querySelector('#contextzero-icon-button');
+    if (existingButton && existingButton.parentNode) {
+      existingButton.parentNode.remove();
+    }
+    
+    const modelButton = this.getModelSelectionButton();
+    if (modelButton && !document.querySelector('#contextzero-icon-button')) {
+      this.createModelSelectionButton(modelButton);
       return;
     }
     
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'contextzero-memory-btn';
-    button.innerHTML = '🧠';
-    button.title = 'Add relevant memories to your prompt';
-    button.style.cssText = `
-      background: #20808d;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      font-size: 16px;
-      margin-left: 8px;
-      padding: 8px 12px;
-      transition: all 0.2s;
-      position: relative;
-      z-index: 1000;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    `;
-    
-    // Hover effects
-    button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = '#1a6b75';
-      button.style.transform = 'scale(1.05)';
-    });
-    
-    button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = '#20808d';
-      button.style.transform = 'scale(1)';
-    });
-    
-    // Click handler
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      await this.handleMemoryButtonClick();
-    });
-    
-    // Insert button next to the input
-    const input = this.getInputElement();
-    if (input.nextSibling) {
-      container.insertBefore(button, input.nextSibling);
-    } else {
-      container.appendChild(button);
+    const sendButton = this.getSendButton();
+    if (sendButton && !document.querySelector('#contextzero-icon-button')) {
+      this.createSendButtonStrategy(sendButton);
+      return;
     }
     
-    console.log('ContextZero: Perplexity memory button injected');
+    const inputContainer = this.getInputContainer();
+    if (inputContainer && !document.querySelector('#contextzero-icon-button')) {
+      this.createInputContainerStrategy(inputContainer);
+      return;
+    }
+    
+    const inputElement = this.getInputElement();
+    if (inputElement && !document.querySelector('#contextzero-icon-button')) {
+      this.createFallbackButton(inputElement);
+      return;
+    }
+    
+  }
+
+  /**
+   * Update notification dot based on input content
+   */
+  updateNotificationDot() {
+    const inputElement = this.getInputElement();
+    
+    if (!inputElement || !this.contextZeroButton) {
+      setTimeout(() => this.updateNotificationDot(), 1000);
+      return;
+    }
+    
+    const checkForText = () => {
+      const inputText = inputElement.value || inputElement.textContent || '';
+      const hasText = inputText.trim() !== '';
+      
+      this.contextZeroButton.updateNotificationDot(hasText);
+    };
+    
+    const observer = new MutationObserver(checkForText);
+    observer.observe(inputElement, { 
+      childList: true, 
+      characterData: true, 
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['value'] 
+    });
+    
+    inputElement.addEventListener('input', checkForText);
+    inputElement.addEventListener('keyup', checkForText);
+    inputElement.addEventListener('focus', checkForText);
+    
+    checkForText();
+    setTimeout(checkForText, 500);
   }
   
   /**
@@ -185,9 +338,11 @@ class PerplexityAdapter {
       
       // Show loading state
       const button = document.querySelector('.contextzero-memory-btn');
-      const originalContent = button.innerHTML;
-      button.innerHTML = '⏳';
-      button.disabled = true;
+      const originalContent = button ? button.innerHTML : '';
+      if (button) {
+        button.innerHTML = '⏳';
+        button.disabled = true;
+      }
       
       // Search for relevant memories
       const memories = await this.memoryManager.searchMemories(inputText, {
@@ -197,8 +352,10 @@ class PerplexityAdapter {
       });
       
       // Restore button
-      button.innerHTML = originalContent;
-      button.disabled = false;
+      if (button) {
+        button.innerHTML = originalContent;
+        button.disabled = false;
+      }
       
       if (memories.length === 0) {
         alert('No relevant memories found for your question.');
@@ -256,7 +413,6 @@ class PerplexityAdapter {
     const newText = currentText + formattedMemories;
     this.setInputText(newText);
     
-    console.log(`ContextZero: Injected ${memories.length} memories into Perplexity prompt`);
   }
   
   /**
@@ -303,7 +459,6 @@ class PerplexityAdapter {
       });
       
       if (memories.length > 0) {
-        console.log(`ContextZero: Extracted ${memories.length} memories from Perplexity message`);
       }
       
     } catch (error) {
@@ -444,7 +599,6 @@ class PerplexityAdapter {
       });
       
       if (memories.length > 0) {
-        console.log(`ContextZero: Added ${memories.length} memories from selected text`);
       }
     } catch (error) {
       console.error('ContextZero: Error adding selected text as memory:', error);
@@ -479,7 +633,6 @@ class PerplexityAdapter {
   async deleteMemory(id) {
     try {
       await this.memoryManager.deleteMemory(id);
-      console.log('ContextZero: Memory deleted');
     } catch (error) {
       console.error('ContextZero: Error deleting memory:', error);
     }
@@ -491,7 +644,6 @@ class PerplexityAdapter {
   async clearAllMemories() {
     try {
       await this.memoryManager.clearAllMemories();
-      console.log('ContextZero: All memories cleared');
     } catch (error) {
       console.error('ContextZero: Error clearing memories:', error);
     }
@@ -513,7 +665,6 @@ class PerplexityAdapter {
       a.click();
       
       URL.revokeObjectURL(url);
-      console.log('ContextZero: Memories exported');
     } catch (error) {
       console.error('ContextZero: Error exporting memories:', error);
     }
@@ -572,4 +723,4 @@ observer.observe(document.body, {
   subtree: true
 });
 
-console.log('ContextZero: Perplexity content script loaded');
+

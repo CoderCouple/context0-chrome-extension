@@ -40,7 +40,7 @@ class ChatGPTAdapter {
       console.log('ContextZero: Initializing ChatGPT adapter...');
       await this.waitForDOM();
       
-      // Try to inject button with retries (mem0 approach)
+  
       this.injectMemoryButton();
       
       this.setupMessageCapture();
@@ -104,53 +104,66 @@ class ChatGPTAdapter {
   }
   
   /**
-   * Inject memory button - simple and direct approach
+   * Inject memory button - mem0 approach
    */
   injectMemoryButton() {
     console.log('ContextZero: Starting button injection...');
     
     // Remove existing button if any
     const existingButton = document.getElementById('contextzero-icon-button');
-    if (existingButton) {
-      existingButton.remove();
+    if (existingButton && existingButton.parentNode) {
+      existingButton.parentNode.remove();
       console.log('ContextZero: Removed existing button');
     }
     
-    // Try multiple strategies to find a suitable container
-    const strategies = [
-      () => document.querySelector('div[data-testid="composer-trailing-actions"]'),
-      () => document.querySelector('[data-testid="send-button"]')?.parentElement,
-      () => {
-        const sendBtn = document.querySelector('[data-testid="send-button"]');
-        return sendBtn?.closest('div[class*="flex"][class*="items-center"]');
-      },
-      () => document.querySelector('form')?.querySelector('div[class*="flex"]:last-child'),
-      () => document.querySelector('#prompt-textarea')?.parentElement?.parentElement,
-      () => document.querySelector('textarea')?.closest('form')?.querySelector('div[class*="flex"]'),
-      () => document.querySelector('main'),
-      () => document.body
-    ];
+    // Look for the mic container using mem0's approach
+    const micContainer = document.querySelector('div[data-testid="composer-trailing-actions"] div.ms-auto');
     
-    let container = null;
-    for (let i = 0; i < strategies.length; i++) {
-      try {
-        container = strategies[i]();
-        if (container) {
-          console.log(`ContextZero: Found container using strategy ${i + 1}:`, container);
-          break;
-        }
-      } catch (e) {
-        console.log(`ContextZero: Strategy ${i + 1} failed:`, e);
+    if (micContainer && !document.querySelector('#contextzero-icon-button')) {
+      // Look for the mic button
+      const micButton = micContainer.querySelector('button[aria-label="Dictate button"]');
+      if (micButton) {
+        this.createMem0StyleButton(micContainer);
+      } else {
+        console.log('ContextZero: Mic button not found, trying fallback');
+        // Fallback to floating button
+        this.createFloatingButton();
       }
-    }
-    
-    if (!container) {
-      console.log('ContextZero: No container found, using floating button as fallback');
+    } else {
+      console.log('ContextZero: Mic container not found, using floating button');
       this.createFloatingButton();
-      return;
     }
+  }
+
+  /**
+   * Create button using ContextZero common button component
+   */
+  createMem0StyleButton(micContainer) {
+    console.log('ContextZero: Creating ContextZero button');
     
-    this.createButtonInContainer(container);
+    // Create the button using the ChatGPT-specific component
+    const contextZeroButton = new ChatGPTContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin: 0 4px;
+        flex-shrink: 0;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    
+    // Insert before the mic button (at the beginning of the container)
+    micContainer.insertBefore(buttonContainer, micContainer.firstChild);
+    
+    // Store reference for updating notification dot
+    this.contextZeroButton = contextZeroButton;
+    
+    console.log('ContextZero: Button injected successfully using ContextZero component');
+    
+    // Update notification dot based on input
+    this.updateNotificationDot();
   }
 
   /**
@@ -213,166 +226,6 @@ class ChatGPTAdapter {
     console.log('ContextZero: Floating button created and added to page');
   }
   
-  /**
-   * Create button in the specified container (mem0 approach)
-   */
-  createButtonInContainer(container) {
-    try {
-      // Create container span like mem0
-      const buttonContainer = document.createElement('span');
-      buttonContainer.setAttribute('data-state', 'closed');
-      buttonContainer.style.cssText = `
-        display: inline-flex;
-        align-items: center;
-        position: relative;
-        margin: 0 2px;
-        flex-shrink: 0;
-      `;
-    
-    // Create the button exactly like mem0 does
-    const button = document.createElement('button');
-    button.id = 'contextzero-icon-button';
-    button.type = 'button';
-    
-    // Use mem0's exact className structure but adapt colors
-    button.className = 'btn relative btn-primary btn-small flex items-center justify-center rounded-full border border-token-border-default p-1 text-token-text-secondary focus-visible:outline-black dark:text-token-text-secondary dark:focus-visible:outline-white bg-transparent dark:bg-transparent can-hover:hover:bg-token-main-surface-secondary dark:hover:bg-transparent dark:hover:opacity-100 h-9 min-h-9 w-9';
-    
-    // Add our custom styles while preserving mem0 structure
-    button.style.cssText = `
-      position: relative;
-      transition: all 0.15s ease;
-    `;
-    
-    // Create SVG icon similar to mem0's structure
-    const iconSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    iconSvg.setAttribute('width', '20');
-    iconSvg.setAttribute('height', '20');
-    iconSvg.setAttribute('viewBox', '0 0 24 24');
-    iconSvg.setAttribute('fill', 'none');
-    iconSvg.style.cssText = 'color: currentColor;';
-    
-    const iconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    iconPath.setAttribute('d', 'M12 2C13.1 2 14 2.9 14 4C14 4.74 13.6 5.39 13 5.73V7H16C17.1 7 18 7.9 18 9V10.27C18.61 10.6 19 11.26 19 12C19 12.74 18.61 13.4 18 13.73V15C18 16.1 17.1 17 16 17H13V18.27C13.6 18.61 14 19.26 14 20C14 21.1 13.1 22 12 22C10.9 22 10 21.1 10 20C10 19.26 10.4 18.61 11 18.27V17H8C6.9 17 6 16.1 6 15V13.73C5.39 13.4 5 12.74 5 12C5 11.26 5.39 10.6 6 10.27V9C6 7.9 6.9 7 8 7H11V5.73C10.4 5.39 10 4.74 10 4C10 2.9 10.9 2 12 2Z');
-    iconPath.setAttribute('fill', 'currentColor');
-    
-    iconSvg.appendChild(iconPath);
-    button.appendChild(iconSvg);
-    
-    // Create notification dot like mem0
-    const notificationDot = document.createElement('div');
-    notificationDot.className = 'contextzero-notification-dot';
-    notificationDot.style.cssText = `
-      position: absolute;
-      top: -2px;
-      right: -2px;
-      width: 8px;
-      height: 8px;
-      background-color: #ff6b35;
-      border-radius: 50%;
-      border: 2px solid white;
-      display: none;
-      z-index: 1001;
-    `;
-    button.appendChild(notificationDot);
-    
-    // Add hover effects with our orange theme
-    button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = 'rgba(255, 107, 53, 0.1)';
-      iconSvg.style.color = '#ff6b35';
-    });
-    
-    button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = '';
-      iconSvg.style.color = 'currentColor';
-    });
-    
-    // Add click handler
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      await this.handleMemoryButtonClick();
-    });
-    
-    // Create tooltip like mem0
-    const tooltip = document.createElement('div');
-    tooltip.className = 'contextzero-tooltip';
-    tooltip.textContent = 'Add memories to your prompt';
-    tooltip.style.cssText = `
-      position: absolute;
-      bottom: calc(100% + 8px);
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1f1f1f;
-      color: white;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      white-space: nowrap;
-      opacity: 0;
-      visibility: hidden;
-      transition: all 0.2s ease;
-      z-index: 10001;
-      pointer-events: none;
-    `;
-    
-    // Add tooltip arrow
-    const tooltipArrow = document.createElement('div');
-    tooltipArrow.style.cssText = `
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 0;
-      height: 0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-top: 6px solid #1f1f1f;
-    `;
-    tooltip.appendChild(tooltipArrow);
-    
-    buttonContainer.appendChild(button);
-    buttonContainer.appendChild(tooltip);
-    
-    // Show/hide tooltip on hover
-    button.addEventListener('mouseenter', () => {
-      tooltip.style.opacity = '1';
-      tooltip.style.visibility = 'visible';
-    });
-    
-    button.addEventListener('mouseleave', () => {
-      tooltip.style.opacity = '0';
-      tooltip.style.visibility = 'hidden';
-    });
-    
-    // Insert button more carefully to avoid displacing other buttons
-    // Look for a specific place in the button group
-    const allButtons = Array.from(container.querySelectorAll('button'));
-    const micButton = allButtons.find(btn => {
-      const ariaLabel = btn.getAttribute('aria-label') || '';
-      return ariaLabel.toLowerCase().includes('mic') || ariaLabel.toLowerCase().includes('voice');
-    });
-    
-    if (micButton && micButton.parentElement === container) {
-      // Insert before the mic button to keep it and dictation together
-      container.insertBefore(buttonContainer, micButton);
-    } else {
-      // Find the first button that's a direct child
-      const directChildButton = allButtons.find(btn => btn.parentElement === container);
-      if (directChildButton) {
-        container.insertBefore(buttonContainer, directChildButton);
-      } else {
-        // As last resort, append to container
-        container.appendChild(buttonContainer);
-      }
-    }
-    
-    console.log('ContextZero: Button injected successfully using mem0 approach');
-    } catch (error) {
-      console.error('ContextZero: Error creating button in container:', error);
-      // Fallback to floating button
-      this.createFloatingButton();
-    }
-  }
   
   /**
    * Handle memory button click
@@ -603,6 +456,48 @@ class ChatGPTAdapter {
     }
   }
   
+  /**
+   * Update notification dot based on input content
+   */
+  updateNotificationDot() {
+    const inputElement = this.getInputElement();
+    
+    if (inputElement && this.contextZeroButton) {
+      // Function to check if input has text
+      const checkForText = () => {
+        const inputText = inputElement.textContent || inputElement.value || '';
+        const hasText = inputText.trim() !== '';
+        
+        // Use the common button component's method
+        this.contextZeroButton.updateNotificationDot(hasText);
+      };
+      
+      // Set up an observer to watch for changes
+      const inputObserver = new MutationObserver(checkForText);
+      
+      // Start observing the input element
+      inputObserver.observe(inputElement, { 
+        childList: true, 
+        characterData: true, 
+        subtree: true 
+      });
+      
+      // Also check on input and keyup events
+      inputElement.addEventListener('input', checkForText);
+      inputElement.addEventListener('keyup', checkForText);
+      inputElement.addEventListener('focus', checkForText);
+      
+      // Initial check
+      checkForText();
+      
+      // Force check after a small delay
+      setTimeout(checkForText, 500);
+    } else {
+      // If elements aren't found, try again after a short delay
+      setTimeout(() => this.updateNotificationDot(), 1000);
+    }
+  }
+
   /**
    * Reinitialize adapter when page changes
    */

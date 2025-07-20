@@ -7,17 +7,21 @@ class ClaudeAdapter {
   constructor() {
     // Selectors for Claude interface elements
     this.selectors = {
-      input: 'div[contenteditable="true"][data-testid="chat-input"]',
-      sendButton: 'button[aria-label="Send Message"]',
-      messageContainer: '.font-claude-message',
+      input: 'div[contenteditable="true"].ProseMirror, div[contenteditable="true"], textarea, p[data-placeholder="How can I help you today?"], p[data-placeholder="Reply to Claude..."]',
+      sendButton: 'button[aria-label="Send Message"], button[aria-label="Send message"]',
+      messageContainer: '.font-claude-message, .font-user-message',
       conversationContainer: 'main',
-      inputContainer: 'div[data-testid="chat-input-container"]'
+      inputContainer: 'div[data-testid="chat-input-container"]',
+      inputToolsMenuButton: '#input-tools-menu-trigger',
+      screenshotButton: 'button[aria-label="Capture screenshot"]'
     };
     
     this.memoryManager = new MemoryManager();
     this.memoryExtractor = new MemoryExtractor();
     this.isInitialized = false;
     this.lastProcessedMessage = '';
+    this.allMemories = [];
+    this.allMemoriesById = new Set();
     
     this.init();
   }
@@ -60,7 +64,13 @@ class ClaudeAdapter {
    * @returns {Element|null} Input element
    */
   getInputElement() {
-    return document.querySelector(this.selectors.input);
+    // Try multiple selectors in order of preference
+    const selectors = this.selectors.input.split(', ');
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) return element;
+    }
+    return null;
   }
   
   /**
@@ -69,7 +79,16 @@ class ClaudeAdapter {
    */
   getInputText() {
     const input = this.getInputElement();
-    return input ? input.textContent : '';
+    if (!input) return '';
+    
+    // Handle different input types
+    if (input.tagName.toLowerCase() === 'textarea') {
+      return input.value || '';
+    } else if (input.tagName.toLowerCase() === 'p') {
+      return input.textContent || '';
+    } else {
+      return input.textContent || input.value || '';
+    }
   }
   
   /**
@@ -109,60 +128,211 @@ class ClaudeAdapter {
   }
   
   /**
-   * Inject memory button into the interface
+   * Inject memory button into the interface using mem0's approach
    */
   injectMemoryButton() {
-    const container = this.getButtonContainer();
-    if (!container) {
+    console.log('ContextZero: Starting button injection...');
+    
+    // Remove existing button if any
+    const existingButton = document.querySelector('#contextzero-icon-button');
+    if (existingButton && existingButton.parentNode) {
+      existingButton.parentNode.remove();
+      console.log('ContextZero: Removed existing button');
+    }
+    
+    // Try different locations based on Claude's interface
+    const inputToolsMenuButton = document.querySelector(this.selectors.inputToolsMenuButton);
+    const screenshotButton = document.querySelector(this.selectors.screenshotButton);
+    const sendButton = document.querySelector(this.selectors.sendButton.split(', ')[0]) || 
+                      document.querySelector(this.selectors.sendButton.split(', ')[1]);
+    
+    if (inputToolsMenuButton && !document.querySelector('#contextzero-icon-button')) {
+      this.createInputToolsButton(inputToolsMenuButton);
+    } else if (window.location.href.includes('claude.ai/new') && screenshotButton && !document.querySelector('#contextzero-icon-button')) {
+      this.createScreenshotButton(screenshotButton);
+    } else if (sendButton && !document.querySelector('#contextzero-icon-button')) {
+      this.createSendButton(sendButton);
+    } else {
+      console.log('ContextZero: No suitable container found for button injection');
+    }
+    
+    // Update notification dot based on input
+    this.updateNotificationDot();
+  }
+  
+  /**
+   * Create button for input tools menu location
+   */
+  createInputToolsButton(inputToolsMenuButton) {
+    console.log('ContextZero: Creating button near input tools menu');
+    
+    // Create the button using the Claude-specific component
+    const contextZeroButton = new ClaudeContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin: 0 8px;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    
+    // Store reference for updating notification dot
+    this.contextZeroButton = contextZeroButton;
+    
+    // Find the parent container to place the button at the same level as input-tools-menu
+    const parentContainer = inputToolsMenuButton.closest('.relative.flex-1.flex.items-center.gap-2') || 
+                            inputToolsMenuButton.closest('.relative.flex-1') ||
+                            inputToolsMenuButton.parentNode.parentNode.parentNode.parentNode.parentNode;
+                            
+    if (parentContainer) {
+      // Find the flex-row div to insert before it
+      const flexRowDiv = parentContainer.querySelector('.flex.flex-row.items-center.gap-2.min-w-0');
+      
+      // Find the tools div that we want to position after
+      const toolsDiv = inputToolsMenuButton.closest('div > div > div > div').parentNode.parentNode;
+      
+      // Make sure our button is the third div in the container
+      if (flexRowDiv && toolsDiv) {
+        // Insert right after the tools div and before the flex-row div
+        parentContainer.insertBefore(buttonContainer, flexRowDiv);
+      } else {
+        // Fallback to just append to the parent
+        parentContainer.appendChild(buttonContainer);
+      }
+    } else {
+      // Fallback to original behavior if parent not found
+      inputToolsMenuButton.parentNode.insertBefore(
+        buttonContainer,
+        inputToolsMenuButton.nextSibling
+      );
+    }
+  }
+  
+  /**
+   * Create button for screenshot button location
+   */
+  createScreenshotButton(screenshotButton) {
+    console.log('ContextZero: Creating button near screenshot button');
+    
+    // Create the button using the Claude-specific component
+    const contextZeroButton = new ClaudeContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin: 0 8px;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    
+    // Store reference for updating notification dot
+    this.contextZeroButton = contextZeroButton;
+    
+    screenshotButton.parentNode.insertBefore(
+      buttonContainer,
+      screenshotButton.nextSibling
+    );
+  }
+  
+  /**
+   * Create button for send button location
+   */
+  createSendButton(sendButton) {
+    console.log('ContextZero: Creating button near send button');
+    
+    // Find the parent container of the send button
+    const buttonParent = sendButton.parentNode;
+    if (!buttonParent) return;
+    
+    // Create the button using the Claude-specific component
+    const contextZeroButton = new ClaudeContextZeroButton({
+      onClick: async (e) => {
+        await this.handleMemoryButtonClick();
+      },
+      containerStyle: `
+        margin-right: 12px;
+      `,
+      buttonStyle: `
+        padding: 4px 8px;
+        height: 32px;
+      `
+    });
+    
+    const buttonContainer = contextZeroButton.createContainer();
+    
+    // Store reference for updating notification dot
+    this.contextZeroButton = contextZeroButton;
+    
+    // Insert the button before the send button
+    buttonParent.insertBefore(buttonContainer, sendButton);
+  }
+  
+  
+  /**
+   * Update notification dot based on input content
+   */
+  updateNotificationDot() {
+    const inputElement = this.getInputElement();
+    
+    if (!inputElement || !this.contextZeroButton) {
+      // If elements aren't found, try again after a short delay
+      setTimeout(() => this.updateNotificationDot(), 1000);
       return;
     }
     
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'contextzero-memory-btn';
-    button.innerHTML = '🧠';
-    button.title = 'Add relevant memories to your prompt';
-    button.style.cssText = `
-      background: #cd7f32;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      font-size: 16px;
-      margin-left: 8px;
-      padding: 8px 12px;
-      transition: all 0.2s;
-      position: absolute;
-      right: 60px;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 1000;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    `;
+    // Function to check if input has text
+    const checkForText = () => {
+      let hasText = false;
+      
+      // Check for text based on the input type
+      if (inputElement.classList.contains('ProseMirror')) {
+        // For ProseMirror, check if it has any content other than just a placeholder <p>
+        const paragraphs = inputElement.querySelectorAll('p');
+        
+        // Check if there's text content or if there are multiple paragraphs
+        const textContent = inputElement.textContent.trim();
+        hasText = textContent !== '' || paragraphs.length > 1 || 
+                 (paragraphs.length === 1 && !paragraphs[0].classList.contains('is-empty'));
+      } else if (inputElement.tagName.toLowerCase() === 'p') {
+        // For p elements with placeholder
+        hasText = (inputElement.textContent || '').trim() !== '';
+      } else if (inputElement.tagName.toLowerCase() === 'div') {
+        // For normal contenteditable divs
+        hasText = (inputElement.textContent || '').trim() !== '';
+      } else {
+        // For textareas
+        hasText = (inputElement.value || '').trim() !== '';
+      }
+      
+      // Use the common button component's method
+      this.contextZeroButton.updateNotificationDot(hasText);
+    };
     
-    // Hover effects
-    button.addEventListener('mouseenter', () => {
-      button.style.backgroundColor = '#b8691e';
-      button.style.transform = 'translateY(-50%) scale(1.05)';
+    // Setup mutation observer for the input element to detect changes
+    const observer = new MutationObserver(checkForText);
+    observer.observe(inputElement, { 
+      childList: true, 
+      characterData: true, 
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'] 
     });
     
-    button.addEventListener('mouseleave', () => {
-      button.style.backgroundColor = '#cd7f32';
-      button.style.transform = 'translateY(-50%) scale(1)';
-    });
+    // Also listen for direct input events
+    inputElement.addEventListener('input', checkForText);
+    inputElement.addEventListener('keyup', checkForText);
+    inputElement.addEventListener('focus', checkForText);
     
-    // Click handler
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      await this.handleMemoryButtonClick();
-    });
+    // Initial check
+    checkForText();
     
-    container.style.position = 'relative';
-    container.appendChild(button);
-    console.log('ContextZero: Claude memory button injected');
+    // Force another check after a small delay
+    setTimeout(checkForText, 500);
   }
-  
+
   /**
    * Handle memory button click
    */
@@ -254,24 +424,49 @@ class ClaudeAdapter {
    * Setup message capture for memory extraction
    */
   setupMessageCapture() {
-    // Listen for send button clicks
-    document.addEventListener('click', async (event) => {
-      const sendButton = event.target.closest(this.selectors.sendButton);
-      if (sendButton) {
-        await this.captureUserMessage();
-      }
-    });
+    // Add send button listener to capture memory and clear memories after sending
+    const allSendButtons = this.selectors.sendButton.split(', ').map(selector => 
+      document.querySelector(selector)
+    ).filter(Boolean);
     
-    // Listen for Enter key in input
-    document.addEventListener('keydown', async (event) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        const input = event.target;
-        if (input.matches && input.matches(this.selectors.input)) {
-          // Small delay to ensure message is processed
-          setTimeout(() => this.captureUserMessage(), 100);
-        }
+    allSendButtons.forEach(sendBtn => {
+      if (sendBtn && !sendBtn.dataset.contextzeroListener) {
+        sendBtn.dataset.contextzeroListener = 'true';
+        sendBtn.addEventListener('click', async () => {
+          // Capture and save memory asynchronously
+          await this.captureUserMessage();
+          
+          // Clear all memories after sending
+          setTimeout(() => {
+            this.allMemories = [];
+            this.allMemoriesById.clear();
+          }, 100);
+        });
       }
     });
+      
+    // Also handle Enter key press for sending messages
+    const inputElement = this.getInputElement();
+    
+    if (inputElement && !inputElement.dataset.contextzeroKeyListener) {
+      inputElement.dataset.contextzeroKeyListener = 'true';
+      inputElement.addEventListener('keydown', async (event) => {
+        // Check if Enter was pressed without Shift (standard send behavior)
+        if (event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+          // Don't process for textarea which may want newlines
+          if (inputElement.tagName.toLowerCase() !== 'textarea') {
+            // Capture and save memory asynchronously
+            await this.captureUserMessage();
+            
+            // Clear all memories after sending
+            setTimeout(() => {
+              this.allMemories = [];
+              this.allMemoriesById.clear();
+            }, 100);
+          }
+        }
+      });
+    }
   }
   
   /**
@@ -517,9 +712,13 @@ class ClaudeAdapter {
     if (this.isInitialized) {
       // Re-inject button if needed
       setTimeout(() => {
-        if (!document.querySelector('.contextzero-memory-btn')) {
+        if (!document.querySelector('#contextzero-icon-button')) {
           this.injectMemoryButton();
         }
+        // Update notification dot
+        this.updateNotificationDot();
+        // Re-setup message capture
+        this.setupMessageCapture();
       }, 1000);
     }
   }
@@ -538,6 +737,13 @@ function initializeClaudeAdapter() {
         adapter.reinitialize();
       }
     }, 1000);
+    
+    // Also check periodically for button existence (like mem0 does)
+    setInterval(() => {
+      if (!document.querySelector('#contextzero-icon-button')) {
+        adapter.injectMemoryButton();
+      }
+    }, 5000);
     
     // Make adapter globally available for debugging
     window.contextZeroClaude = adapter;
