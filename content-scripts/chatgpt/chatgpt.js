@@ -933,3 +933,142 @@ setTimeout(() => {
     console.log('ContextZero: Button already exists');
   }
 }, 5000);
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('ContextZero: Received message:', request.action);
+  
+  (async () => {
+    try {
+      switch(request.action) {
+        case 'addSelectedTextAsMemory':
+          await handleAddSelectedTextAsMemory(request.text);
+          sendResponse({ success: true });
+          break;
+          
+        case 'searchMemoriesWithText':
+          await handleSearchMemoriesWithText(request.text);
+          sendResponse({ success: true });
+          break;
+          
+        case 'ping':
+          sendResponse({ success: true, status: 'active' });
+          break;
+          
+        default:
+          console.log('ContextZero: Unknown action:', request.action);
+          sendResponse({ success: false, error: 'Unknown action' });
+      }
+    } catch (error) {
+      console.error('ContextZero: Error handling message:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+  })();
+  
+  return true; // Indicates async response
+});
+
+// Handle adding selected text as memory to backend
+async function handleAddSelectedTextAsMemory(text) {
+  console.log('ContextZero: Adding selected text as memory to backend:', text);
+  
+  try {
+    // Get the adapter instance
+    const adapter = window.contextZeroChatGPT || window.chatGPTAdapter;
+    
+    if (!adapter || !adapter.memoryManager) {
+      // Try to initialize if not ready
+      if (!adapter) {
+        initializeChatGPTAdapter();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
+      const newAdapter = window.contextZeroChatGPT || window.chatGPTAdapter;
+      if (!newAdapter || !newAdapter.memoryManager) {
+        AlertDialog.show('Memory system not initialized. Please refresh the page.', {
+          type: 'error'
+        });
+        return;
+      }
+    }
+    
+    const memoryManager = adapter.memoryManager;
+    
+    // Store the selected text as a memory with metadata
+    const metadata = {
+      type: 'note',
+      category: 'general',
+      source: 'context-menu',
+      platform: 'web',
+      url: window.location.href,
+      title: document.title,
+      timestamp: Date.now()
+    };
+    
+    // Store to backend
+    const result = await memoryManager.storeMemory(text, metadata);
+    
+    if (result && result.length > 0) {
+      // Show success message
+      AlertDialog.show(`Memory saved successfully!`, {
+        type: 'success'
+      });
+      
+      console.log('ContextZero: Memory stored successfully:', result);
+    } else {
+      throw new Error('Failed to store memory');
+    }
+    
+  } catch (error) {
+    console.error('ContextZero: Error adding memory:', error);
+    AlertDialog.show('Failed to save memory. Please try again.', {
+      type: 'error'
+    });
+  }
+}
+
+// Handle searching memories with selected text
+async function handleSearchMemoriesWithText(text) {
+  console.log('ContextZero: Searching memories with text:', text);
+  
+  try {
+    // Get the adapter instance
+    const adapter = window.contextZeroChatGPT || window.chatGPTAdapter;
+    
+    if (!adapter || !adapter.memoryManager) {
+      AlertDialog.show('Memory system not initialized. Please refresh the page.', {
+        type: 'error'
+      });
+      return;
+    }
+    
+    // Search for memories
+    const results = await adapter.memoryManager.searchMemories(text, {
+      limit: 20,
+      threshold: 0.5
+    });
+    
+    if (results.length === 0) {
+      AlertDialog.show(`No memories found matching: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`, {
+        type: 'info'
+      });
+      return;
+    }
+    
+    // Show results in a modal
+    const modal = new MemoryModal(results, {
+      title: `Search Results (${results.length})`,
+      onSelect: (selectedMemories) => adapter.injectMemories(selectedMemories),
+      onClose: () => modal.remove()
+    });
+    
+    const modalElement = modal.render();
+    document.body.appendChild(modalElement);
+    
+  } catch (error) {
+    console.error('ContextZero: Error searching memories:', error);
+    AlertDialog.show('Failed to search memories. Please try again.', {
+      type: 'error'
+    });
+  }
+}
