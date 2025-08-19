@@ -317,6 +317,9 @@
   cursor: pointer;
   transition: all 0.2s ease;
   color: #cccccc;
+  pointer-events: auto;
+  position: relative;
+  z-index: 10001;
 }
 
 .memory-action-btn:hover {
@@ -328,6 +331,12 @@
 .memory-action-btn.delete-memory-btn:hover {
   background-color: #ef4444;
   color: #ffffff;
+}
+
+.memory-action-btn svg {
+  pointer-events: none;
+  width: 16px;
+  height: 16px;
 }
 
 .memory-metadata {

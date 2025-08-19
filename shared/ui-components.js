@@ -206,10 +206,14 @@ class MemoryModal {
    * @param {HTMLElement} modal - Modal element
    */
   attachEventListeners(modal) {
+    console.log('ContextZero: Attaching event listeners to modal');
+    
     // Add All to Prompt button (main action)
     const addToPromptBtn = modal.querySelector('#contextzero-add-to-prompt');
     if (addToPromptBtn) {
+      console.log('ContextZero: Found Add All to Prompt button');
       addToPromptBtn.addEventListener('click', () => {
+        console.log('ContextZero: Add All to Prompt clicked');
         // Add ALL memories (not just current page)
         this.memories.forEach(memory => {
           this.selectedMemories.add(memory.id);
@@ -234,12 +238,22 @@ class MemoryModal {
       });
     }
 
-    // Individual memory add button
+    // Check if individual memory buttons exist
+    const memoryButtons = modal.querySelectorAll('.add-memory-btn');
+    console.log('ContextZero: Found', memoryButtons.length, 'individual memory add buttons');
+    
+    // Individual memory add button - use event delegation on modal
     modal.addEventListener('click', (e) => {
       console.log('ContextZero: Modal click event, target:', e.target);
+      console.log('ContextZero: Target classes:', e.target.className);
+      console.log('ContextZero: Target parent:', e.target.parentElement);
+      
       const addBtn = e.target.closest('.add-memory-btn');
       if (addBtn) {
         console.log('ContextZero: Add memory button clicked');
+        e.preventDefault();
+        e.stopPropagation();
+        
         const memoryId = addBtn.dataset.memoryId;
         console.log('ContextZero: Memory ID:', memoryId);
         // Clear previous selections and add only this memory
@@ -248,7 +262,7 @@ class MemoryModal {
         console.log('ContextZero: Selected memories:', this.selectedMemories);
         this.addSelectedMemories();
       }
-    });
+    }, true); // Use capture phase
 
     // Delete memory button
     modal.addEventListener('click', async (e) => {
