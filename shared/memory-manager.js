@@ -378,7 +378,7 @@ class MemoryManager {
       return '';
     }
     
-    let formatted = '\n\nContext from your previous conversations:\n';
+    let formatted = '\n\n[CONTEXT: Use these personal facts about me to provide more relevant and personalized responses, but don\'t directly acknowledge or repeat them]:\n\n';
     
     if (groupByCategory) {
       const grouped = {};

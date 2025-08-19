@@ -13,6 +13,9 @@ class HybridMemoryManager {
   }
 
   async init() {
+    // Load settings first
+    await this.loadSettings();
+    
     // Import and initialize local components
     if (typeof MemoryManager !== 'undefined') {
       this.localMemoryManager = new MemoryManager();
@@ -20,14 +23,13 @@ class HybridMemoryManager {
     
     if (typeof CloudAPI !== 'undefined') {
       this.cloudAPI = new CloudAPI();
+      // Ensure CloudAPI is initialized
+      await this.cloudAPI.init();
     }
     
     if (typeof LocalStorage !== 'undefined') {
       this.storage = new LocalStorage();
     }
-
-    // Load settings
-    await this.loadSettings();
   }
 
   async loadSettings() {
@@ -39,6 +41,13 @@ class HybridMemoryManager {
       autoSync: true,
       aiEnhancement: true
     };
+    
+    // Ensure cloudEnabled is set if not defined
+    if (this.settings.cloudEnabled === undefined) {
+      this.settings.cloudEnabled = true;
+    }
+    
+    console.log('HybridMemoryManager: Settings loaded:', this.settings);
   }
 
   async saveSettings() {
@@ -400,6 +409,124 @@ class HybridMemoryManager {
     if (this.cloudAPI) {
       await this.cloudAPI.logout();
     }
+  }
+
+  /**
+   * Get all memories for authenticated user
+   * @returns {Promise<Array>} All user memories
+   */
+  async getAllMemories() {
+    try {
+      console.log('HybridMemoryManager: getAllMemories called');
+      
+      // Check if user is authenticated first
+      if (typeof ClerkAuth !== 'undefined') {
+        const clerkAuth = new ClerkAuth();
+        const isAuthenticated = await clerkAuth.isAuthenticated();
+        console.log('HybridMemoryManager: User authenticated:', isAuthenticated);
+        
+        if (!isAuthenticated) {
+          console.log('HybridMemoryManager: User not authenticated, returning empty array');
+          return [];
+        }
+      }
+      
+      // Initialize cloud API if needed
+      if (!this.cloudAPI && typeof CloudAPI !== 'undefined') {
+        console.log('HybridMemoryManager: Initializing CloudAPI...');
+        this.cloudAPI = new CloudAPI();
+        await this.cloudAPI.init();
+      }
+      
+      // Ensure settings are loaded
+      if (!this.settings) {
+        await this.loadSettings();
+      }
+      
+      // Get local memories first
+      if (!this.storage) {
+        console.warn('HybridMemoryManager: Storage not initialized');
+        return [];
+      }
+      
+      const localMemories = await this.storage.getMemories();
+      console.log('HybridMemoryManager: Local memories count:', localMemories?.length || 0);
+      
+      // If cloud sync is enabled, get cloud memories too
+      console.log('HybridMemoryManager: Cloud settings:', {
+        cloudEnabled: this.settings.cloudEnabled,
+        hasCloudAPI: !!this.cloudAPI,
+        isCloudEnabled: this.cloudAPI?.isCloudEnabled?.() || false
+      });
+      
+      if (this.settings.cloudEnabled && this.cloudAPI && this.cloudAPI.isCloudEnabled()) {
+        try {
+          console.log('HybridMemoryManager: Fetching cloud memories...');
+          const cloudMemories = await this.cloudAPI.getAllMemories();
+          console.log('HybridMemoryManager: Cloud memories count:', cloudMemories?.length || 0);
+          
+          // Merge and deduplicate
+          const mergedMemories = await this.mergeMemories(localMemories, cloudMemories);
+          console.log('HybridMemoryManager: Merged memories count:', mergedMemories?.length || 0);
+          return mergedMemories;
+        } catch (error) {
+          console.warn('Could not fetch cloud memories:', error);
+        }
+      }
+      
+      console.log('HybridMemoryManager: Returning local memories only');
+      return localMemories;
+    } catch (error) {
+      console.error('Error getting all memories:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Format memories for prompt injection
+   * @param {Array} memories - Selected memories
+   * @param {Object} options - Formatting options
+   * @returns {string} Formatted memories
+   */
+  formatMemoriesForInjection(memories, options = {}) {
+    if (this.localMemoryManager) {
+      return this.localMemoryManager.formatMemoriesForInjection(memories, options);
+    }
+    
+    // Fallback formatting if local manager not available
+    const { groupByCategory = true, maxLength = 800 } = options;
+    
+    if (!memories || memories.length === 0) {
+      return '';
+    }
+    
+    let formatted = '\n\n[CONTEXT: Use these personal facts about me to provide more relevant and personalized responses, but don\'t directly acknowledge or repeat them]:\n\n';
+    
+    if (groupByCategory) {
+      const grouped = memories.reduce((acc, memory) => {
+        const category = memory.metadata?.category || 'general';
+        if (!acc[category]) acc[category] = [];
+        acc[category].push(memory);
+        return acc;
+      }, {});
+      
+      for (const [category, categoryMemories] of Object.entries(grouped)) {
+        categoryMemories.forEach(memory => {
+          formatted += `- ${memory.content}\n`;
+        });
+      }
+    } else {
+      memories.forEach(memory => {
+        formatted += `- ${memory.content}\n`;
+      });
+    }
+    
+    // Truncate if too long
+    if (formatted.length > maxLength) {
+      formatted = formatted.substring(0, maxLength - 3) + '...';
+    }
+    
+    return formatted;
   }
 }
 

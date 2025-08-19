@@ -83,8 +83,23 @@ class GeminiAdapter {
    * @returns {string} Current input text
    */
   getInputText() {
-    const input = this.getInputElement();
-    return input ? (input.textContent || input.value || '') : '';
+    try {
+      const input = this.getInputElement();
+      if (!input) return '';
+      
+      let text = '';
+      if (input.contentEditable === 'true') {
+        text = input.textContent || '';
+      } else {
+        text = input.value || '';
+      }
+      
+      // Ensure we always return a string
+      return typeof text === 'string' ? text : '';
+    } catch (error) {
+      console.warn('ContextZero: Error getting input text:', error);
+      return '';
+    }
   }
   
   /**
@@ -398,7 +413,7 @@ class GeminiAdapter {
   async handleMemoryButtonClick() {
     try {
       const inputText = this.getInputText();
-      if (!inputText.trim()) {
+      if (!inputText || typeof inputText !== 'string' || !inputText.trim()) {
         alert('Please enter a message first, then click the memory button to add relevant context.');
         return;
       }

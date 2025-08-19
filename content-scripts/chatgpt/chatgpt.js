@@ -7,8 +7,8 @@ class ChatGPTAdapter {
   constructor() {
     // Updated selectors for modern ChatGPT interface
     this.selectors = {
-      input: '#prompt-textarea, [data-id="root"] textarea, textarea[placeholder*="Message"]',
-      sendButton: '[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"]',
+      input: '#prompt-textarea, div#prompt-textarea, textarea[data-id="root"], textarea[placeholder*="Message"], textarea[placeholder*="message"], div[contenteditable="true"][data-placeholder*="Message"], div[contenteditable="true"]',
+      sendButton: '[data-testid="send-button"], button[aria-label="Send prompt"], button[data-testid="fruitjuice-send-button"], button[aria-label="Send message"]',
       messageContainer: '[data-testid="conversation-turn"], .group, [class*="conversation-turn"]',
       buttonContainer: 'form[class*="stretch"], div[class*="composer"]',
       conversationContainer: 'main [class*="conversation"], main[class*="chat"], .conversation-container'
@@ -17,10 +17,14 @@ class ChatGPTAdapter {
     this.isInitialized = false;
     this.lastProcessedMessage = '';
     
-    // Initialize memory components safely
+    // Initialize memory components safely - prefer HybridMemoryManager
     try {
-      if (typeof MemoryManager !== 'undefined') {
+      if (typeof HybridMemoryManager !== 'undefined') {
+        this.memoryManager = new HybridMemoryManager();
+        console.log('ContextZero: Using HybridMemoryManager for ChatGPT');
+      } else if (typeof MemoryManager !== 'undefined') {
         this.memoryManager = new MemoryManager();
+        console.log('ContextZero: Fallback to MemoryManager for ChatGPT');
       }
       if (typeof MemoryExtractor !== 'undefined') {
         this.memoryExtractor = new MemoryExtractor();
@@ -74,10 +78,17 @@ class ChatGPTAdapter {
    * @returns {Element|null} Input element
    */
   getInputElement() {
+    console.log('ContextZero: Looking for input element...');
     for (const selector of this.selectors.input.split(', ')) {
       const element = document.querySelector(selector);
-      if (element) return element;
+      if (element) {
+        console.log('ContextZero: Found input with selector:', selector);
+        console.log('ContextZero: Element tag:', element.tagName);
+        console.log('ContextZero: ContentEditable:', element.contentEditable);
+        return element;
+      }
     }
+    console.log('ContextZero: No input element found!');
     return null;
   }
   
@@ -86,8 +97,26 @@ class ChatGPTAdapter {
    * @returns {string} Current input text
    */
   getInputText() {
-    const input = this.getInputElement();
-    return input ? input.value : '';
+    try {
+      const input = this.getInputElement();
+      if (!input) return '';
+      
+      // Handle different input types
+      let text = '';
+      if (input.tagName.toLowerCase() === 'textarea' || input.tagName.toLowerCase() === 'input') {
+        text = input.value || '';
+      } else if (input.contentEditable === 'true' || input.hasAttribute('contenteditable')) {
+        text = input.textContent || input.innerText || '';
+      } else {
+        text = input.value || input.textContent || input.innerText || '';
+      }
+      
+      // Ensure we always return a string
+      return typeof text === 'string' ? text : '';
+    } catch (error) {
+      console.warn('ContextZero: Error getting input text:', error);
+      return '';
+    }
   }
   
   /**
@@ -95,11 +124,80 @@ class ChatGPTAdapter {
    * @param {string} text - Text to set
    */
   setInputText(text) {
+    console.log('ContextZero: setInputText called with:', text);
     const input = this.getInputElement();
+    
     if (input) {
-      input.value = text;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      console.log('ContextZero: Setting text on element:', input);
+      
+      // ChatGPT specific: Check if it's the new prompt-textarea div
+      if (input.id === 'prompt-textarea' && input.tagName === 'DIV') {
+        console.log('ContextZero: Using ChatGPT-specific method for div#prompt-textarea');
+        
+        // Clear existing content
+        input.innerHTML = '';
+        
+        // Create paragraph elements for proper formatting
+        const lines = text.split('\n');
+        lines.forEach((line, index) => {
+          const p = document.createElement('p');
+          p.textContent = line || '\u200B'; // Use zero-width space for empty lines
+          input.appendChild(p);
+        });
+        
+        // Focus and move cursor to end
+        input.focus();
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.selectNodeContents(input.lastChild || input);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // Trigger proper events
+        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        input.dispatchEvent(new InputEvent('input', { 
+          bubbles: true, 
+          cancelable: true,
+          inputType: 'insertText',
+          data: text
+        }));
+        
+      } else if (input.tagName.toLowerCase() === 'textarea' || input.tagName.toLowerCase() === 'input') {
+        console.log('ContextZero: Using textarea/input method');
+        input.value = text;
+        // Trigger events for textarea/input
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (input.contentEditable === 'true' || input.hasAttribute('contenteditable')) {
+        console.log('ContextZero: Using generic contenteditable method');
+        // For contenteditable, we need to properly set the content
+        input.innerHTML = text.replace(/\n/g, '<br>');
+        
+        // Move cursor to end for contenteditable
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.selectNodeContents(input);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // Trigger input event for contenteditable
+        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        input.dispatchEvent(new Event('compositionend', { bubbles: true }));
+      } else {
+        console.log('ContextZero: Using fallback method');
+        input.value = text;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      
+      // Focus the input
+      input.focus();
+      
+      console.log('ContextZero: Text set complete');
+    } else {
+      console.error('ContextZero: No input element found to set text!');
     }
   }
   
@@ -194,24 +292,62 @@ class ChatGPTAdapter {
         color: white;
         user-select: none;
         opacity: 0.9;
-      " title="ContextZero - Add memories to your prompt">
+      ">
         🧠
       </div>
     `;
     
     const floatingBtn = button.firstElementChild;
     
-    // Add hover effects
-    floatingBtn.addEventListener('mouseenter', () => {
+    // Add hover effects with stable tooltip
+    let hoverTooltip = null;
+    let hoverTimeout = null;
+    let isHovering = false;
+    
+    const showTooltip = () => {
+      if (!isHovering || hoverTooltip) return;
+      hoverTooltip = new TooltipPopover('Add memories to your prompt', floatingBtn);
+      hoverTooltip.show();
+    };
+    
+    const hideTooltip = () => {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+        hoverTimeout = null;
+      }
+      if (hoverTooltip) {
+        hoverTooltip.hide();
+        hoverTooltip = null;
+      }
+    };
+    
+    floatingBtn.addEventListener('mouseenter', (e) => {
+      isHovering = true;
       floatingBtn.style.transform = 'scale(1.1)';
       floatingBtn.style.opacity = '1';
       floatingBtn.style.boxShadow = '0 4px 16px rgba(255, 107, 53, 0.3)';
+      
+      // Cancel any pending hide
+      hideTooltip();
+      
+      // Show tooltip after delay
+      hoverTimeout = setTimeout(showTooltip, 600);
     });
     
-    floatingBtn.addEventListener('mouseleave', () => {
+    floatingBtn.addEventListener('mouseleave', (e) => {
+      isHovering = false;
       floatingBtn.style.transform = 'scale(1)';
       floatingBtn.style.opacity = '0.9';
       floatingBtn.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.2)';
+      
+      // Hide tooltip immediately
+      hideTooltip();
+    });
+    
+    // Prevent tooltip on click
+    floatingBtn.addEventListener('mousedown', () => {
+      isHovering = false;
+      hideTooltip();
     });
     
     // Add click handler
@@ -230,47 +366,167 @@ class ChatGPTAdapter {
   /**
    * Handle memory button click
    */
+  /**
+   * Initialize Clerk authentication
+   */
+  initClerkAuth() {
+    if (!this.clerkAuth && typeof ClerkAuth !== 'undefined') {
+      this.clerkAuth = new ClerkAuth();
+    }
+    return this.clerkAuth;
+  }
+
+  /**
+   * Check authentication status
+   */
+  async checkAuthStatus() {
+    try {
+      this.initClerkAuth();
+      
+      if (this.clerkAuth) {
+        const isAuthenticated = await this.clerkAuth.isAuthenticated();
+        
+        if (isAuthenticated) {
+          const user = await this.clerkAuth.getCurrentUser();
+          return {
+            isAuthenticated: true,
+            userId: user?.id,
+            email: user?.email
+          };
+        }
+      }
+      
+      // Fallback to stored auth state
+      const result = await chrome.storage.local.get([
+        'contextzero_user_logged_in', 
+        'contextzero_user_id',
+        'contextzero_user_email'
+      ]);
+      
+      return {
+        isAuthenticated: !!result.contextzero_user_logged_in,
+        userId: result.contextzero_user_id,
+        email: result.contextzero_user_email
+      };
+    } catch (error) {
+      console.error('ContextZero: Error checking auth status:', error);
+      return { isAuthenticated: false };
+    }
+  }
+
+  /**
+   * Get all user memories
+   */
+  async getAllUserMemories() {
+    try {
+      console.log('ContextZero: Getting all user memories...');
+      console.log('ContextZero: Memory manager type:', this.memoryManager?.constructor?.name);
+      
+      // If using HybridMemoryManager with cloud sync
+      if (this.memoryManager && this.memoryManager.getAllMemories) {
+        console.log('ContextZero: Using getAllMemories from HybridMemoryManager');
+        const memories = await this.memoryManager.getAllMemories();
+        console.log('ContextZero: Retrieved memories from cloud:', memories);
+        return memories || [];
+      }
+      
+      // Fallback to local storage
+      console.log('ContextZero: Falling back to local storage');
+      const memories = await this.memoryManager.storage.getMemories();
+      console.log('ContextZero: Retrieved memories from local:', memories);
+      
+      // Sort by most recent first
+      return memories.sort((a, b) => b.timestamp - a.timestamp);
+    } catch (error) {
+      console.error('ContextZero: Error getting all memories:', error);
+      return [];
+    }
+  }
+
   async handleMemoryButtonClick() {
     try {
-      const inputText = this.getInputText();
-      if (!inputText.trim()) {
-        alert('Please enter a message first, then click the memory button to add relevant context.');
+      // First check authentication status
+      const authStatus = await this.checkAuthStatus();
+      
+      if (!authStatus.isAuthenticated) {
+        // Show sign-in dialog
+        SignInDialog.show({
+          onSignIn: async (authData) => {
+            console.log('ContextZero: User initiated sign in');
+            
+            // If authentication was successful, don't show dialog again
+            if (authData) {
+              console.log('ContextZero: Authentication successful, refreshing memories');
+              // Small delay to ensure auth is propagated
+              setTimeout(() => {
+                // Re-run the memory button click to show memories
+                this.handleMemoryButtonClick();
+              }, 500);
+            }
+          },
+          onClose: () => {
+            console.log('ContextZero: Sign in dialog closed');
+          }
+        });
         return;
       }
       
+      // User is authenticated, show all their memories
       if (!this.memoryManager) {
-        alert('Memory system not available. Please refresh the page and try again.');
+        AlertDialog.show('Memory system not available. Please refresh the page and try again.', {
+          type: 'error'
+        });
         return;
       }
       
       // Show loading state
       const button = document.getElementById('contextzero-icon-button');
-      const originalIcon = button.innerHTML;
-      button.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2L13.09 8.26L22 9L13.09 9.74L12 22L10.91 9.74L2 9L10.91 8.26L12 2Z" fill="currentColor"/>
-        </svg>
-      `;
-      button.disabled = true;
-      
-      // Search for relevant memories
-      const memories = await this.memoryManager.searchMemories(inputText, {
-        limit: 10,
-        threshold: 0.3,
-        includeGeneral: true
-      });
-      
-      // Restore button
-      button.innerHTML = originalIcon;
-      button.disabled = false;
-      
-      if (memories.length === 0) {
-        alert('No relevant memories found for your prompt.');
-        return;
+      const originalIcon = button?.innerHTML;
+      if (button) {
+        button.innerHTML = `
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L13.09 8.26L22 9L13.09 9.74L12 22L10.91 9.74L2 9L10.91 8.26L12 2Z" fill="currentColor"/>
+          </svg>
+        `;
+        button.disabled = true;
       }
       
-      // Show memory selection modal
-      this.showMemoryModal(memories);
+      try {
+        // Get ALL user memories (not filtered by input)
+        const allMemories = await this.getAllUserMemories();
+        
+        console.log('ContextZero Debug - Total memories:', allMemories.length);
+        
+        // Restore button
+        if (button) {
+          button.innerHTML = originalIcon;
+          button.disabled = false;
+        }
+        
+        if (allMemories.length === 0) {
+          // Show a friendly message if no memories exist
+          AlertDialog.show('No memories found. Start chatting to create your first memory!', {
+            type: 'info'
+          });
+          return;
+        }
+        
+        // Show all memories in the modal
+        this.showMemoryModal(allMemories);
+        
+      } catch (error) {
+        console.error('ContextZero: Error loading memories:', error);
+        
+        // Restore button on error
+        if (button) {
+          button.innerHTML = originalIcon;
+          button.disabled = false;
+        }
+        
+        AlertDialog.show('Error loading memories. Please try again.', {
+          type: 'error'
+        });
+      }
       
     } catch (error) {
       console.error('ContextZero: Error handling memory button click:', error.message || error);
@@ -282,7 +538,9 @@ class ChatGPTAdapter {
         button.disabled = false;
       }
       
-      alert('Error accessing memories. Please refresh the page and try again.');
+      AlertDialog.show('Error accessing memories. Please refresh the page and try again.', {
+        type: 'error'
+      });
     }
   }
   
@@ -291,19 +549,45 @@ class ChatGPTAdapter {
    * @param {Array} memories - Array of relevant memories
    */
   showMemoryModal(memories) {
+    console.log('ContextZero Debug - showMemoryModal called with memories:', memories);
+    
     // Remove existing modal
     const existingModal = document.querySelector('.contextzero-modal');
     if (existingModal) {
+      console.log('ContextZero Debug - Removing existing modal');
       existingModal.remove();
     }
     
-    // Create modal
-    const modal = new MemoryModal(memories, {
-      onSelect: (selectedMemories) => this.injectMemories(selectedMemories),
-      onClose: () => modal.remove()
-    });
-    
-    document.body.appendChild(modal.render());
+    try {
+      // Check if MemoryModal class is available
+      if (typeof MemoryModal === 'undefined') {
+        console.error('ContextZero: MemoryModal class not found');
+        AlertDialog.show('Memory modal component not loaded. Please refresh the page.', {
+          type: 'error'
+        });
+        return;
+      }
+      
+      // Create modal
+      console.log('ContextZero Debug - Creating MemoryModal');
+      const modal = new MemoryModal(memories, {
+        onSelect: (selectedMemories) => this.injectMemories(selectedMemories),
+        onClose: () => modal.remove()
+      });
+      
+      console.log('ContextZero Debug - Modal created, rendering...');
+      const modalElement = modal.render();
+      console.log('ContextZero Debug - Modal element:', modalElement);
+      
+      document.body.appendChild(modalElement);
+      console.log('ContextZero Debug - Modal appended to body');
+      
+    } catch (error) {
+      console.error('ContextZero: Error creating modal:', error);
+      AlertDialog.show('Error opening memory dialog. Check console for details.', {
+        type: 'error'
+      });
+    }
   }
   
   /**
@@ -311,23 +595,37 @@ class ChatGPTAdapter {
    * @param {Array} memories - Selected memories
    */
   injectMemories(memories) {
+    console.log('ContextZero: injectMemories called with', memories);
     if (memories.length === 0) return;
     
     const currentText = this.getInputText();
+    console.log('ContextZero: Current text:', currentText);
+    
     const formattedMemories = this.memoryManager.formatMemoriesForInjection(memories, {
       groupByCategory: true,
       maxLength: 800
     });
+    console.log('ContextZero: Formatted memories:', formattedMemories);
     
     const newText = currentText + formattedMemories;
+    console.log('ContextZero: New text to set:', newText);
+    
     this.setInputText(newText);
     
     // Focus the input
     const input = this.getInputElement();
+    console.log('ContextZero: Input element after setting text:', input);
+    
     if (input) {
       input.focus();
-      // Move cursor to end
-      input.setSelectionRange(input.value.length, input.value.length);
+      // Move cursor to end for different input types
+      if (input.tagName.toLowerCase() === 'textarea' || input.tagName.toLowerCase() === 'input') {
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      
+      // Check if text was actually set
+      const verifyText = this.getInputText();
+      console.log('ContextZero: Text after setting:', verifyText);
     }
     
     console.log(`ContextZero: Injected ${memories.length} memories into prompt`);
@@ -516,38 +814,61 @@ class ChatGPTAdapter {
 // Force initialization immediately
 console.log('ContextZero: Script loaded, checking domain...');
 
+// Track initialization state
+let isInitializing = false;
+let lastInitTime = 0;
+let urlCheckInterval = null;
+
 function initializeChatGPTAdapter() {
+  // Prevent rapid reinitialization
+  const now = Date.now();
+  if (isInitializing || (now - lastInitTime) < 2000) {
+    return;
+  }
+  
+  isInitializing = true;
+  lastInitTime = now;
+  
   console.log('ContextZero: Attempting to initialize on:', window.location.hostname);
   
   if (window.location.hostname.includes('openai.com') || window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('chat.openai.com')) {
     console.log('ContextZero: Domain matched, creating adapter...');
     
-    // Force create adapter even if one exists
-    if (window.contextZeroChatGPT) {
-      console.log('ContextZero: Existing adapter found, recreating...');
-    }
-    
-    const adapter = new ChatGPTAdapter();
-    window.contextZeroChatGPT = adapter;
-    
-    // Retry button injection after a delay
-    setTimeout(() => {
-      console.log('ContextZero: Retrying button injection after delay...');
-      adapter.injectMemoryButton();
-    }, 2000);
-    
-    // Reinitialize on page navigation
-    let currentUrl = window.location.href;
-    setInterval(() => {
-      if (window.location.href !== currentUrl) {
-        currentUrl = window.location.href;
-        console.log('ContextZero: URL changed, reinitializing...');
-        adapter.reinitialize();
+    // Only create new adapter if one doesn't exist
+    if (!window.contextZeroChatGPT) {
+      console.log('ContextZero: Creating new adapter...');
+      const adapter = new ChatGPTAdapter();
+      window.contextZeroChatGPT = adapter;
+      
+      // Retry button injection after a delay
+      setTimeout(() => {
+        console.log('ContextZero: Retrying button injection after delay...');
+        adapter.injectMemoryButton();
+        isInitializing = false;
+      }, 2000);
+      
+      // Clear existing interval if any
+      if (urlCheckInterval) {
+        clearInterval(urlCheckInterval);
       }
-    }, 1000);
+      
+      // Reinitialize on page navigation
+      let currentUrl = window.location.href;
+      urlCheckInterval = setInterval(() => {
+        if (window.location.href !== currentUrl) {
+          currentUrl = window.location.href;
+          console.log('ContextZero: URL changed, reinitializing...');
+          adapter.reinitialize();
+        }
+      }, 1000);
+    } else {
+      console.log('ContextZero: Adapter already exists, skipping recreation...');
+      isInitializing = false;
+    }
     
   } else {
     console.log('ContextZero: Domain not matched:', window.location.hostname);
+    isInitializing = false;
   }
 }
 
@@ -577,7 +898,7 @@ let initTimeout;
 const observer = new MutationObserver(() => {
   clearTimeout(initTimeout);
   initTimeout = setTimeout(() => {
-    console.log('ContextZero: DOM mutation detected, reinitializing...');
+    // console.log('ContextZero: DOM mutation detected, reinitializing...');
     initializeChatGPTAdapter();
   }, 200);
 });

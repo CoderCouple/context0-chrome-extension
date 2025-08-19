@@ -201,9 +201,21 @@ class BaseContextZeroButton {
     button.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      console.log('ContextZero: Button clicked!');
+      console.log('ContextZero: onClick function:', this.onClick);
       
       this.hideTooltip();
-      await this.onClick(e);
+      
+      if (this.onClick) {
+        console.log('ContextZero: Calling onClick handler...');
+        try {
+          await this.onClick(e);
+        } catch (error) {
+          console.error('ContextZero: Error in onClick handler:', error);
+        }
+      } else {
+        console.log('ContextZero: No onClick handler defined!');
+      }
     });
   }
 

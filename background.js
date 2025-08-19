@@ -2,6 +2,9 @@
  * Background service worker for ContextZero Chrome Extension
  */
 
+// Import authentication handler
+importScripts('background-auth.js');
+
 /**
  * Handle extension installation and updates
  */
@@ -80,15 +83,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     try {
       const storage = new LocalStorage();
       const memoryManager = new MemoryManager();
+      const hybridManager = new HybridMemoryManager();
       
       switch (request.action) {
         case 'addMemory':
-          const memories = await memoryManager.storeMemory(request.content, request.metadata);
+          const memories = await hybridManager.storeMemory(request.content, request.metadata);
           sendResponse({ success: true, memories });
           break;
           
         case 'searchMemories':
-          const results = await memoryManager.searchMemories(request.query, request.options);
+          const results = await hybridManager.searchMemories(request.query, request.options);
           sendResponse({ success: true, memories: results });
           break;
           
@@ -123,7 +127,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           break;
           
         case 'getStatistics':
-          const stats = await memoryManager.getStatistics();
+          const stats = await hybridManager.getStatistics();
           sendResponse({ success: true, statistics: stats });
           break;
           
@@ -135,6 +139,42 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'importData':
           const imported = await storage.importData(request.data);
           sendResponse({ success: imported });
+          break;
+
+        // Cloud-related actions
+        case 'getCloudAuthStatus':
+          const authStatus = hybridManager.getAuthStatus();
+          sendResponse({ success: true, ...authStatus });
+          break;
+
+        case 'cloudAuth':
+          const authResult = await hybridManager.cloudAPI.redirectToClerkAuth();
+          sendResponse({ success: true });
+          break;
+
+        case 'cloudLogout':
+          await hybridManager.logout();
+          sendResponse({ success: true });
+          break;
+
+        case 'toggleCloudSetting':
+          const toggleResult = await handleCloudSettingToggle(request.setting, hybridManager);
+          sendResponse(toggleResult);
+          break;
+
+        case 'syncMemories':
+          const syncResult = await hybridManager.syncMemories();
+          sendResponse({ success: syncResult.success, ...syncResult });
+          break;
+
+        case 'getSyncData':
+          const syncData = await storage.getSyncData();
+          sendResponse({ success: true, data: syncData });
+          break;
+
+        case 'toggleTestingMode':
+          const testingResult = await handleTestingModeToggle(hybridManager);
+          sendResponse(testingResult);
           break;
           
         case 'openOptionsPage':
@@ -528,6 +568,52 @@ class MemoryManager {
     formatted += '\nPlease use this context to provide more personalized responses.\n';
     
     return formatted;
+  }
+}
+
+/**
+ * Handle cloud setting toggle
+ * @param {string} setting - Setting name
+ * @param {HybridMemoryManager} hybridManager - Hybrid manager instance
+ * @returns {Promise<Object>} Toggle result
+ */
+async function handleCloudSettingToggle(setting, hybridManager) {
+  try {
+    switch (setting) {
+      case 'cloudEnabled':
+        const currentEnabled = hybridManager.settings.cloudEnabled;
+        await hybridManager.cloudAPI.setCloudEnabled(!currentEnabled);
+        hybridManager.settings.cloudEnabled = !currentEnabled;
+        await hybridManager.saveSettings();
+        return { success: true, value: !currentEnabled };
+
+      case 'autoSync':
+        const currentAutoSync = hybridManager.settings.autoSync;
+        await hybridManager.setAutoSync(!currentAutoSync);
+        return { success: true, value: !currentAutoSync };
+
+      default:
+        return { success: false, error: 'Unknown cloud setting' };
+    }
+  } catch (error) {
+    console.error('Error toggling cloud setting:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Handle testing mode toggle
+ * @param {HybridMemoryManager} hybridManager - Hybrid manager instance
+ * @returns {Promise<Object>} Toggle result
+ */
+async function handleTestingModeToggle(hybridManager) {
+  try {
+    const currentMode = hybridManager.cloudAPI.isTestingMode();
+    await hybridManager.cloudAPI.enableTestingMode(!currentMode);
+    return { success: true, enabled: !currentMode };
+  } catch (error) {
+    console.error('Error toggling testing mode:', error);
+    return { success: false, error: error.message };
   }
 }
 

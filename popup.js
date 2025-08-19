@@ -16,6 +16,7 @@ class PopupController {
     try {
       await this.initializeTheme();
       await this.loadData();
+      await this.loadCloudStatus();
       this.setupEventListeners();
       this.hideLoading();
     } catch (error) {
@@ -151,6 +152,8 @@ class PopupController {
   updateSettings(settings) {
     const memoryToggle = document.getElementById('memory-enabled-toggle');
     const autoToggle = document.getElementById('auto-capture-toggle');
+    const cloudToggle = document.getElementById('cloud-enabled-toggle');
+    const autoSyncToggle = document.getElementById('auto-sync-toggle');
 
     if (settings.memoryEnabled) {
       memoryToggle.classList.add('active');
@@ -158,6 +161,14 @@ class PopupController {
 
     if (settings.autoCapture) {
       autoToggle.classList.add('active');
+    }
+
+    if (settings.cloudEnabled) {
+      cloudToggle.classList.add('active');
+    }
+
+    if (settings.autoSync) {
+      autoSyncToggle.classList.add('active');
     }
   }
 
@@ -194,6 +205,27 @@ class PopupController {
 
     document.getElementById('auto-capture-toggle').addEventListener('click', () => {
       this.toggleSetting('autoCapture');
+    });
+
+    document.getElementById('cloud-enabled-toggle').addEventListener('click', () => {
+      this.toggleCloudSetting('cloudEnabled');
+    });
+
+    document.getElementById('auto-sync-toggle').addEventListener('click', () => {
+      this.toggleCloudSetting('autoSync');
+    });
+
+    // Cloud action buttons
+    document.getElementById('cloud-auth-btn').addEventListener('click', () => {
+      this.handleCloudAuth();
+    });
+
+    document.getElementById('sync-now-btn').addEventListener('click', () => {
+      this.syncNow();
+    });
+
+    document.getElementById('testing-mode-btn').addEventListener('click', () => {
+      this.toggleTestingMode();
     });
 
     // Import file input
@@ -475,6 +507,166 @@ class PopupController {
       return `${Math.floor(diffHours / 24)}d ago`;
     } else {
       return date.toLocaleDateString();
+    }
+  }
+
+  /**
+   * Load cloud status and update UI
+   */
+  async loadCloudStatus() {
+    try {
+      const [authStatus, syncData] = await Promise.all([
+        this.sendMessage({ action: 'getCloudAuthStatus' }),
+        this.sendMessage({ action: 'getSyncData' })
+      ]);
+
+      this.updateCloudUI(authStatus.success ? authStatus : null, syncData.success ? syncData.data : null);
+    } catch (error) {
+      console.error('Failed to load cloud status:', error);
+    }
+  }
+
+  /**
+   * Update cloud UI elements
+   * @param {Object} authStatus - Authentication status
+   * @param {Object} syncData - Sync data
+   */
+  updateCloudUI(authStatus, syncData) {
+    const statusIndicator = document.getElementById('cloud-status-indicator');
+    const cloudInfo = document.getElementById('cloud-info');
+    const authBtn = document.getElementById('cloud-auth-btn');
+    const syncBtn = document.getElementById('sync-now-btn');
+    const authStatusSpan = document.getElementById('auth-status');
+    const lastSyncSpan = document.getElementById('last-sync');
+    const processingModeSpan = document.getElementById('processing-mode');
+
+    if (authStatus && authStatus.isAuthenticated) {
+      statusIndicator.className = 'status-indicator connected';
+      authStatusSpan.textContent = authStatus.testingMode ? 'Testing Mode' : 'Authenticated';
+      authBtn.innerHTML = '<span>🚪</span><span>Sign Out</span>';
+      syncBtn.style.display = 'inline-flex';
+      cloudInfo.style.display = 'block';
+      
+      if (authStatus.testingMode) {
+        authStatusSpan.textContent += ' (🧪 Test)';
+      }
+    } else {
+      statusIndicator.className = 'status-indicator disconnected';
+      authStatusSpan.textContent = 'Not authenticated';
+      authBtn.innerHTML = '<span>🔑</span><span>Sign In</span>';
+      syncBtn.style.display = 'none';
+      cloudInfo.style.display = 'none';
+    }
+
+    if (syncData) {
+      if (syncData.lastSync) {
+        lastSyncSpan.textContent = this.formatDate(syncData.lastSync);
+      } else {
+        lastSyncSpan.textContent = 'Never';
+      }
+
+      if (syncData.syncInProgress) {
+        statusIndicator.className = 'status-indicator syncing';
+      }
+    }
+
+    // Update processing mode
+    if (authStatus && authStatus.cloudEnabled) {
+      processingModeSpan.textContent = 'Hybrid';
+    } else {
+      processingModeSpan.textContent = 'Local';
+    }
+  }
+
+  /**
+   * Toggle cloud setting
+   * @param {string} settingName - Cloud setting name
+   */
+  async toggleCloudSetting(settingName) {
+    try {
+      const result = await this.sendMessage({ action: 'toggleCloudSetting', setting: settingName });
+      
+      if (result.success) {
+        // Update UI
+        const toggle = document.getElementById(`${settingName.replace(/([A-Z])/g, '-$1').toLowerCase()}-toggle`);
+        toggle.classList.toggle('active', result.value);
+        
+        this.showSuccess(`${settingName} ${result.value ? 'enabled' : 'disabled'}`);
+        await this.loadCloudStatus(); // Refresh cloud status
+      } else {
+        this.showError('Failed to update cloud setting');
+      }
+    } catch (error) {
+      this.showError('Failed to toggle cloud setting: ' + error.message);
+    }
+  }
+
+  /**
+   * Handle cloud authentication
+   */
+  async handleCloudAuth() {
+    try {
+      const authStatus = await this.sendMessage({ action: 'getCloudAuthStatus' });
+      
+      if (authStatus.success && authStatus.isAuthenticated) {
+        // Already authenticated - sign out
+        const result = await this.sendMessage({ action: 'cloudLogout' });
+        if (result.success) {
+          this.showSuccess('Signed out successfully');
+          await this.loadCloudStatus();
+        }
+      } else {
+        // Not authenticated - sign in
+        this.showSuccess('Opening authentication page...');
+        await this.sendMessage({ action: 'cloudAuth' });
+        // Close popup so user can complete auth
+        window.close();
+      }
+    } catch (error) {
+      this.showError('Authentication failed: ' + error.message);
+    }
+  }
+
+  /**
+   * Sync memories now
+   */
+  async syncNow() {
+    try {
+      this.setLoading(true);
+      const statusIndicator = document.getElementById('cloud-status-indicator');
+      statusIndicator.className = 'status-indicator syncing';
+      
+      const result = await this.sendMessage({ action: 'syncMemories' });
+      
+      if (result.success) {
+        this.showSuccess(`Sync completed: ${result.uploaded || 0} uploaded, ${result.downloaded || 0} downloaded`);
+        await this.loadData(); // Refresh memory display
+        await this.loadCloudStatus(); // Refresh cloud status
+      } else {
+        this.showError(`Sync failed: ${result.error}`);
+      }
+    } catch (error) {
+      this.showError('Sync failed: ' + error.message);
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  /**
+   * Toggle testing mode
+   */
+  async toggleTestingMode() {
+    try {
+      const result = await this.sendMessage({ action: 'toggleTestingMode' });
+      
+      if (result.success) {
+        this.showSuccess(`Testing mode ${result.enabled ? 'enabled' : 'disabled'}`);
+        await this.loadCloudStatus();
+      } else {
+        this.showError('Failed to toggle testing mode');
+      }
+    } catch (error) {
+      this.showError('Failed to toggle testing mode: ' + error.message);
     }
   }
 }

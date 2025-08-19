@@ -25,10 +25,10 @@ class DeepSeekContextZeroButton extends BaseContextZeroButton {
       display: inline-flex;
       margin-left: -2px;
       align-items: center;
-      padding: 0px 6px;
+      padding: 0px 10px;
       border: 1px solid #A1A1AA;
       border-radius: 16px;
-      background-color: rgba(255, 255, 255, 0.0);
+      background-color: #ffffff;
       transition: background-color 0.2s;
       box-sizing: border-box;
     `;
@@ -168,7 +168,7 @@ class DeepSeekContextZeroButton extends BaseContextZeroButton {
     // Create button text matching DeepSeek's style
     const buttonText = document.createElement('span');
     buttonText.style.cssText = `
-      color: #A1A1AA;
+      color: #000000;
       font-size: 12px;
       padding-left: 2px;
     `;

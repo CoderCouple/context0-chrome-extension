@@ -412,6 +412,93 @@
             color: var(--cz-success);
         }
 
+        /* Cloud Sync Styles */
+        .cloud-section {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--cz-border-primary);
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 8px;
+        }
+
+        .status-indicator.connected {
+            background-color: var(--cz-success);
+        }
+
+        .status-indicator.disconnected {
+            background-color: var(--cz-error);
+        }
+
+        .status-indicator.syncing {
+            background-color: var(--cz-warning);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .cloud-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn-small {
+            padding: 8px 12px;
+            font-size: 12px;
+            flex: 1;
+            min-width: 100px;
+        }
+
+        .cloud-info {
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--cz-bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--cz-border-primary);
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .info-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-label {
+            color: var(--cz-text-secondary);
+            font-weight: 500;
+        }
+
+        .sync-progress {
+            width: 100%;
+            height: 4px;
+            background: var(--cz-bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .sync-progress-bar {
+            height: 100%;
+            background: var(--cz-accent-primary);
+            transition: width 0.3s ease;
+            border-radius: 2px;
+        }
+
         /* Remove system theme override - default to dark theme */
     </style>
 </head>
@@ -502,6 +589,58 @@
                         <div class="toggle-label">Auto Enhancement</div>
                         <div class="toggle-switch" id="auto-capture-toggle">
                             <div class="toggle-slider"></div>
+                        </div>
+                    </div>
+
+                    <div class="cloud-section">
+                        <div class="section-title">
+                            <span>☁️</span>
+                            <span>Cloud Sync</span>
+                            <span id="cloud-status-indicator" class="status-indicator"></span>
+                        </div>
+                        
+                        <div class="toggle">
+                            <div class="toggle-label">Cloud Sync</div>
+                            <div class="toggle-switch" id="cloud-enabled-toggle">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="toggle">
+                            <div class="toggle-label">Auto Sync</div>
+                            <div class="toggle-switch" id="auto-sync-toggle">
+                                <div class="toggle-slider"></div>
+                            </div>
+                        </div>
+
+                        <div class="cloud-actions">
+                            <button class="btn btn-secondary btn-small" id="cloud-auth-btn">
+                                <span>🔑</span>
+                                <span>Sign In</span>
+                            </button>
+                            <button class="btn btn-secondary btn-small" id="sync-now-btn" style="display: none;">
+                                <span>🔄</span>
+                                <span>Sync Now</span>
+                            </button>
+                            <button class="btn btn-secondary btn-small" id="testing-mode-btn">
+                                <span>🧪</span>
+                                <span>Test Mode</span>
+                            </button>
+                        </div>
+
+                        <div id="cloud-info" class="cloud-info" style="display: none;">
+                            <div class="info-item">
+                                <span class="info-label">Status:</span>
+                                <span id="auth-status">Not authenticated</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Last Sync:</span>
+                                <span id="last-sync">Never</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Mode:</span>
+                                <span id="processing-mode">Local</span>
+                            </div>
                         </div>
                     </div>
                 </div>

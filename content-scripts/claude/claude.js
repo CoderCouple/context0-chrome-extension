@@ -16,8 +16,21 @@ class ClaudeAdapter {
       screenshotButton: 'button[aria-label="Capture screenshot"]'
     };
     
-    this.memoryManager = new MemoryManager();
-    this.memoryExtractor = new MemoryExtractor();
+    // Initialize memory components - prefer HybridMemoryManager
+    try {
+      if (typeof HybridMemoryManager !== 'undefined') {
+        this.memoryManager = new HybridMemoryManager();
+        console.log('ContextZero: Using HybridMemoryManager for Claude');
+      } else if (typeof MemoryManager !== 'undefined') {
+        this.memoryManager = new MemoryManager();
+        console.log('ContextZero: Fallback to MemoryManager for Claude');
+      }
+      if (typeof MemoryExtractor !== 'undefined') {
+        this.memoryExtractor = new MemoryExtractor();
+      }
+    } catch (error) {
+      console.warn('ContextZero: Could not initialize memory components:', error.message);
+    }
     this.isInitialized = false;
     this.lastProcessedMessage = '';
     this.allMemories = [];
@@ -78,16 +91,25 @@ class ClaudeAdapter {
    * @returns {string} Current input text
    */
   getInputText() {
-    const input = this.getInputElement();
-    if (!input) return '';
-    
-    // Handle different input types
-    if (input.tagName.toLowerCase() === 'textarea') {
-      return input.value || '';
-    } else if (input.tagName.toLowerCase() === 'p') {
-      return input.textContent || '';
-    } else {
-      return input.textContent || input.value || '';
+    try {
+      const input = this.getInputElement();
+      if (!input) return '';
+      
+      // Handle different input types
+      let text = '';
+      if (input.tagName.toLowerCase() === 'textarea') {
+        text = input.value || '';
+      } else if (input.tagName.toLowerCase() === 'p') {
+        text = input.textContent || '';
+      } else {
+        text = input.textContent || input.value || '';
+      }
+      
+      // Ensure we always return a string
+      return typeof text === 'string' ? text : '';
+    } catch (error) {
+      console.warn('ContextZero: Error getting input text:', error);
+      return '';
     }
   }
   
@@ -339,7 +361,7 @@ class ClaudeAdapter {
   async handleMemoryButtonClick() {
     try {
       const inputText = this.getInputText();
-      if (!inputText.trim()) {
+      if (!inputText || typeof inputText !== 'string' || !inputText.trim()) {
         alert('Please enter a message first, then click the memory button to add relevant context.');
         return;
       }

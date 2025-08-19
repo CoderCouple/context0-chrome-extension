@@ -2,7 +2,9 @@
   "manifest_version": 3,
   "name": "ContextZero",
   "version": "1.0.0",
-  "description": "Personal memory agent for all your AI conversations",
+  "description": "Personal memory agent that automatically captures and injects relevant context into your AI conversations across ChatGPT, Claude, Perplexity, Gemini, DeepSeek, and Grok.",
+  "author": "ContextZero Team",
+  "homepage_url": "https://github.com/contextzero/chrome-extension",
   "permissions": [
     "storage",
     "activeTab",
@@ -21,37 +23,39 @@
     "*://bard.google.com/*",
     "*://ai.google.dev/*",
     "*://deepseek.com/*",
-    "*://chat.deepseek.com/*"
+    "*://chat.deepseek.com/*",
+    "https://www.context0.ai/*",
+    "https://api.context0.ai/*"
   ],
   "content_scripts": [
     {
       "matches": ["*://chatgpt.com/*", "*://chat.openai.com/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/chatgpt-button.js", "content-scripts/chatgpt/chatgpt.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/cloud-api.js", "shared/hybrid-memory-manager.js", "shared/clerk-auth.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/chatgpt-button.js", "content-scripts/chatgpt/chatgpt.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://claude.ai/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/claude-button.js", "content-scripts/claude/claude.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/cloud-api.js", "shared/hybrid-memory-manager.js", "shared/clerk-auth.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/claude-button.js", "content-scripts/claude/claude.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://perplexity.ai/*", "*://www.perplexity.ai/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/perplexity-button.js", "content-scripts/perplexity/perplexity.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/cloud-api.js", "shared/hybrid-memory-manager.js", "shared/clerk-auth.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/perplexity-button.js", "content-scripts/perplexity/perplexity.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://x.ai/*", "*://grok.com/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/grok-button.js", "content-scripts/grok/grok.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/cloud-api.js", "shared/hybrid-memory-manager.js", "shared/clerk-auth.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/grok-button.js", "content-scripts/grok/grok.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://gemini.google.com/*", "*://bard.google.com/*", "*://ai.google.dev/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/gemini-button.js", "content-scripts/gemini/gemini.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/cloud-api.js", "shared/hybrid-memory-manager.js", "shared/clerk-auth.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/gemini-button.js", "content-scripts/gemini/gemini.js"],
       "css": ["styles/modal.css"]
     },
     {
       "matches": ["*://deepseek.com/*", "*://chat.deepseek.com/*"],
-      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/deepseek-button.js", "content-scripts/deepseek/deepseek.js"],
+      "js": ["shared/memory-manager.js", "shared/storage.js", "shared/memory-extractor.js", "shared/cloud-api.js", "shared/hybrid-memory-manager.js", "shared/clerk-auth.js", "shared/ui-components.js", "shared/buttons/base-button.js", "shared/buttons/deepseek-button.js", "content-scripts/deepseek/deepseek.js"],
       "css": ["styles/modal.css"]
     }
   ],

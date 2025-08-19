@@ -5,7 +5,7 @@
 
 class CloudAPI {
   constructor() {
-    this.baseURL = 'https://api.contextzero.dev'; // Replace with your FastAPI backend URL
+    this.baseURL = 'https://api.context0.ai'; // Your FastAPI backend URL
     this.clerkToken = null;
     this.userId = null;
     this.userEmail = null;
@@ -15,34 +15,56 @@ class CloudAPI {
   }
 
   async init() {
-    // Load stored Clerk credentials and testing flags
-    const result = await chrome.storage.sync.get([
-      'contextzero_clerk_token', 
-      'contextzero_user_id', 
-      'contextzero_user_email',
-      'contextzero_cloud_enabled',
-      'contextzero_testing_mode',
-      'contextzero_test_user_id'
-    ]);
-    
-    this.testingMode = result.contextzero_testing_mode === true;
-    
-    if (this.testingMode) {
-      // In testing mode, create a mock authenticated state
-      this.clerkToken = 'testing-token-' + Date.now();
-      this.userId = result.contextzero_test_user_id || 'test-user-' + Date.now();
-      this.userEmail = 'test@contextzero.dev';
-      this.isAuthenticated = true;
-      this.cloudEnabled = true;
+    try {
+      // First try to get auth from ClerkAuth
+      if (typeof ClerkAuth !== 'undefined') {
+        const clerkAuth = new ClerkAuth();
+        const authData = await clerkAuth.getToken();
+        
+        if (authData && authData.token) {
+          this.clerkToken = authData.token;
+          this.userId = authData.userId;
+          this.userEmail = authData.email;
+          this.isAuthenticated = true;
+          this.cloudEnabled = true;
+          console.log('CloudAPI: Initialized with Clerk authentication');
+          return;
+        }
+      }
       
-      console.log('🧪 CloudAPI: Running in testing mode with mock auth');
-    } else {
-      // Normal mode - use real Clerk credentials
-      this.clerkToken = result.contextzero_clerk_token;
-      this.userId = result.contextzero_user_id;
-      this.userEmail = result.contextzero_user_email;
-      this.isAuthenticated = !!(this.clerkToken && this.userId);
-      this.cloudEnabled = result.contextzero_cloud_enabled !== false; // Default to true
+      // Fallback to stored credentials
+      const result = await chrome.storage.sync.get([
+        'contextzero_clerk_token', 
+        'contextzero_user_id', 
+        'contextzero_user_email',
+        'contextzero_cloud_enabled',
+        'contextzero_testing_mode',
+        'contextzero_test_user_id'
+      ]);
+      
+      this.testingMode = result.contextzero_testing_mode === true;
+      
+      if (this.testingMode) {
+        // In testing mode, create a mock authenticated state
+        this.clerkToken = 'testing-token-' + Date.now();
+        this.userId = result.contextzero_test_user_id || 'test-user-' + Date.now();
+        this.userEmail = 'test@contextzero.dev';
+        this.isAuthenticated = true;
+        this.cloudEnabled = true;
+        
+        console.log('🧪 CloudAPI: Running in testing mode with mock auth');
+      } else {
+        // Normal mode - use stored credentials
+        this.clerkToken = result.contextzero_clerk_token;
+        this.userId = result.contextzero_user_id;
+        this.userEmail = result.contextzero_user_email;
+        this.isAuthenticated = !!(this.clerkToken && this.userId);
+        this.cloudEnabled = result.contextzero_cloud_enabled !== false; // Default to true
+      }
+    } catch (error) {
+      console.error('CloudAPI: Error during initialization:', error);
+      this.isAuthenticated = false;
+      this.cloudEnabled = false;
     }
   }
 
@@ -94,8 +116,8 @@ class CloudAPI {
    */
   async redirectToClerkAuth() {
     try {
-      // Open Clerk authentication in a new tab
-      const authUrl = `${this.baseURL}/auth/clerk-redirect`;
+      // Open frontend authentication page in a new tab
+      const authUrl = `https://www.context0.ai/auth`; // Your frontend auth page
       chrome.tabs.create({ url: authUrl });
     } catch (error) {
       console.error('Clerk redirect error:', error);
@@ -129,19 +151,29 @@ class CloudAPI {
     }
 
     try {
-      const response = await fetch(`${this.baseURL}/memories/process`, {
+      // Create memory using the backend's expected format
+      const response = await fetch(`${this.baseURL}/api/v1/memories`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.clerkToken}`,
         },
         body: JSON.stringify({
-          content,
+          user_id: this.userId,
+          session_id: metadata.sessionId || 'chrome-extension-default',
+          text: content,
+          memory_type: metadata.memory_type,
+          tags: metadata.tags || [],
+          category: metadata.category,
+          emotion: metadata.emotion,
           metadata: {
             ...metadata,
-            userId: this.userId,
-            timestamp: Date.now(),
+            platform: metadata.platform || 'chrome-extension',
+            url: metadata.url,
+            source: metadata.source || 'user-input',
+            timestamp: Date.now()
           },
+          scope: metadata.scope || 'general'
         }),
       });
 
@@ -150,7 +182,25 @@ class CloudAPI {
       }
 
       const data = await response.json();
-      return data.memories || [];
+      
+      // Handle BaseResponse structure
+      if (data.success && data.result) {
+        // Return array with the created memory in extension format
+        return [{
+          id: data.result.memory_id,
+          content: content,
+          metadata: {
+            type: data.result.memory_type,
+            category: metadata.category || 'general',
+            confidence: data.result.confidence,
+            platform: 'cloud',
+            operation: data.result.operation
+          },
+          timestamp: Date.now()
+        }];
+      }
+      
+      return [];
     } catch (error) {
       console.error('AI processing error:', error);
       throw error;
@@ -205,11 +255,10 @@ class CloudAPI {
 
     try {
       const queryParams = new URLSearchParams({
-        userId: this.userId,
         ...options,
       });
 
-      const response = await fetch(`${this.baseURL}/memories?${queryParams}`, {
+      const response = await fetch(`${this.baseURL}/api/v1/memories?${queryParams}`, {
         headers: {
           'Authorization': `Bearer ${this.clerkToken}`,
         },
@@ -246,16 +295,25 @@ class CloudAPI {
     }
 
     try {
-      const response = await fetch(`${this.baseURL}/memories/search`, {
+      const response = await fetch(`${this.baseURL}/api/v1/memories/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.clerkToken}`,
         },
         body: JSON.stringify({
-          query,
-          userId: this.userId,
-          options,
+          user_id: this.userId,
+          query: query,
+          memory_types: options.memory_types,
+          tags: options.tags,
+          category: options.category,
+          emotion: options.emotion,
+          limit: options.limit || 10,
+          threshold: options.threshold || 0.7,
+          include_content: options.include_content || false,
+          scope: options.scope,
+          start_date: options.start_date,
+          end_date: options.end_date
         }),
       });
 
@@ -268,6 +326,86 @@ class CloudAPI {
     } catch (error) {
       console.error('AI search error:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get all memories for the authenticated user
+   * @returns {Promise<Array>} All user memories
+   */
+  async getAllMemories() {
+    console.log('CloudAPI: getAllMemories called');
+    console.log('CloudAPI: isAuthenticated:', this.isAuthenticated);
+    console.log('CloudAPI: cloudEnabled:', this.cloudEnabled);
+    console.log('CloudAPI: userId:', this.userId);
+    
+    if (!this.isAuthenticated || !this.cloudEnabled) {
+      console.log('CloudAPI: Not authenticated or cloud not enabled');
+      return [];
+    }
+
+    try {
+      // Ensure we have fresh auth token
+      if (typeof ClerkAuth !== 'undefined') {
+        const clerkAuth = new ClerkAuth();
+        const authData = await clerkAuth.getToken();
+        console.log('CloudAPI: Got auth data:', authData ? 'Yes' : 'No');
+        if (authData && authData.token) {
+          this.clerkToken = authData.token;
+          this.userId = authData.userId;
+          console.log('CloudAPI: Updated token and userId');
+        }
+      }
+
+      const url = `${this.baseURL}/api/v1/memories?limit=100`;
+      console.log('CloudAPI: Fetching memories from:', url);
+      console.log('CloudAPI: Using token:', this.clerkToken ? 'Yes' : 'No');
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${this.clerkToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('CloudAPI: Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('CloudAPI: Error response:', errorText);
+        throw new Error(`Failed to fetch all memories: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('CloudAPI: Response data:', data);
+      
+      // Handle BaseResponse structure
+      if (data.success && data.result) {
+        // Transform backend memory format to extension format
+        const memories = data.result.map(memory => ({
+          id: memory.id,
+          content: memory.input || memory.summary,
+          metadata: {
+            type: memory.memory_type,
+            category: memory.category || 'general',
+            confidence: memory.confidence || 0.8,
+            platform: 'cloud',
+            tags: memory.tags || [],
+            emotion: memory.emotion,
+            scope: memory.scope,
+            createdAt: memory.created_at,
+            updatedAt: memory.updated_at
+          },
+          timestamp: new Date(memory.created_at).getTime()
+        }));
+        return memories;
+      }
+      
+      // Fallback for direct array response
+      return data.memories || data || [];
+    } catch (error) {
+      console.error('Get all memories error:', error);
+      return [];
     }
   }
 

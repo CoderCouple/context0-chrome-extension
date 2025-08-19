@@ -230,16 +230,18 @@ class LocalStorage {
    */
   async exportData() {
     try {
-      const [memories, settings, userData] = await Promise.all([
+      const [memories, settings, userData, syncData] = await Promise.all([
         this.getMemories(),
         this.getSettings(),
-        this.getUserData()
+        this.getUserData(),
+        this.getSyncData()
       ]);
       
       return {
         memories,
         settings,
         userData,
+        syncData,
         exportDate: new Date().toISOString(),
         version: '1.0.0'
       };
@@ -274,10 +276,82 @@ class LocalStorage {
         });
       }
       
+      if (data.syncData) {
+        await this.saveSyncData(data.syncData);
+      }
+      
       return true;
     } catch (error) {
       console.error('Error importing data:', error);
       return false;
+    }
+  }
+
+  /**
+   * Get sync data (cloud sync metadata)
+   * @returns {Promise<Object>} Sync data
+   */
+  async getSyncData() {
+    try {
+      const result = await chrome.storage.local.get(['contextzero_sync_data']);
+      return result.contextzero_sync_data || {
+        lastSync: null,
+        cloudEnabled: false,
+        syncInProgress: false,
+        lastSyncError: null,
+        syncCount: 0
+      };
+    } catch (error) {
+      console.error('Error getting sync data:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Save sync data
+   * @param {Object} syncData - Sync data object
+   * @returns {Promise<boolean>} Success status
+   */
+  async saveSyncData(syncData) {
+    try {
+      await chrome.storage.local.set({
+        contextzero_sync_data: syncData
+      });
+      return true;
+    } catch (error) {
+      console.error('Error saving sync data:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Update last sync time
+   * @param {number} timestamp - Sync timestamp
+   */
+  async updateLastSync(timestamp = Date.now()) {
+    try {
+      const syncData = await this.getSyncData();
+      syncData.lastSync = timestamp;
+      syncData.syncCount = (syncData.syncCount || 0) + 1;
+      await this.saveSyncData(syncData);
+    } catch (error) {
+      console.error('Error updating last sync:', error);
+    }
+  }
+
+  /**
+   * Set sync status
+   * @param {boolean} inProgress - Whether sync is in progress
+   * @param {string|null} error - Error message if any
+   */
+  async setSyncStatus(inProgress, error = null) {
+    try {
+      const syncData = await this.getSyncData();
+      syncData.syncInProgress = inProgress;
+      syncData.lastSyncError = error;
+      await this.saveSyncData(syncData);
+    } catch (error) {
+      console.error('Error setting sync status:', error);
     }
   }
 }
