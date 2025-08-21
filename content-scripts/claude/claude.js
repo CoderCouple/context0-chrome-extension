@@ -118,22 +118,86 @@ class ClaudeAdapter {
    * @param {string} text - Text to set
    */
   setInputText(text) {
+    console.log('ContextZero: setInputText called with:', text);
     const input = this.getInputElement();
+    
     if (input) {
-      input.textContent = text;
+      console.log('ContextZero: Setting text on element:', input);
       
-      // Trigger input events for Claude
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
+      // Claude uses ProseMirror editor which requires special handling
+      if (input.classList.contains('ProseMirror')) {
+        console.log('ContextZero: Using ProseMirror-specific method');
+        
+        // Clear existing content
+        input.innerHTML = '';
+        
+        // Create paragraph elements for proper formatting
+        const lines = text.split('\n');
+        lines.forEach((line, index) => {
+          const p = document.createElement('p');
+          if (line) {
+            p.textContent = line;
+          } else {
+            // Empty paragraphs need a <br> in ProseMirror
+            const br = document.createElement('br');
+            p.appendChild(br);
+          }
+          input.appendChild(p);
+        });
+        
+        // Focus and move cursor to end
+        input.focus();
+        
+        // Create a range at the end of the last paragraph
+        const lastP = input.lastElementChild;
+        if (lastP) {
+          const range = document.createRange();
+          const selection = window.getSelection();
+          
+          if (lastP.childNodes.length > 0) {
+            const lastNode = lastP.childNodes[lastP.childNodes.length - 1];
+            range.setStartAfter(lastNode);
+            range.setEndAfter(lastNode);
+          } else {
+            range.selectNodeContents(lastP);
+            range.collapse(false);
+          }
+          
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        
+        // Trigger ProseMirror-specific events
+        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        input.dispatchEvent(new InputEvent('beforeinput', {
+          bubbles: true,
+          cancelable: true,
+          inputType: 'insertText',
+          data: text
+        }));
+        
+      } else {
+        console.log('ContextZero: Using generic contenteditable method');
+        // For other contenteditable elements
+        input.textContent = text;
+        
+        // Trigger input events for Claude
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // Focus and set cursor to end
+        input.focus();
+        const range = document.createRange();
+        const selection = window.getSelection();
+        range.selectNodeContents(input);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
       
-      // Focus and set cursor to end
-      input.focus();
-      const range = document.createRange();
-      const selection = window.getSelection();
-      range.selectNodeContents(input);
-      range.collapse(false);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      console.log('ContextZero: Text set complete');
+    } else {
+      console.error('ContextZero: No input element found to set text!');
     }
   }
   
@@ -356,50 +420,169 @@ class ClaudeAdapter {
   }
 
   /**
+   * Initialize Clerk authentication
+   */
+  initClerkAuth() {
+    if (!this.clerkAuth && typeof ClerkAuth !== 'undefined') {
+      this.clerkAuth = new ClerkAuth();
+    }
+    return this.clerkAuth;
+  }
+
+  /**
+   * Check authentication status
+   */
+  async checkAuthStatus() {
+    try {
+      this.initClerkAuth();
+      
+      if (this.clerkAuth) {
+        const isAuthenticated = await this.clerkAuth.isAuthenticated();
+        
+        if (isAuthenticated) {
+          const user = await this.clerkAuth.getCurrentUser();
+          return {
+            isAuthenticated: true,
+            userId: user?.id,
+            email: user?.email
+          };
+        }
+      }
+      
+      // Fallback to stored auth state
+      const result = await chrome.storage.local.get([
+        'contextzero_user_logged_in', 
+        'contextzero_user_id',
+        'contextzero_user_email'
+      ]);
+      
+      return {
+        isAuthenticated: !!result.contextzero_user_logged_in,
+        userId: result.contextzero_user_id,
+        email: result.contextzero_user_email
+      };
+    } catch (error) {
+      console.error('ContextZero: Error checking auth status:', error);
+      return { isAuthenticated: false };
+    }
+  }
+
+  /**
+   * Get all user memories (not filtered by prompt)
+   */
+  async getAllUserMemories() {
+    try {
+      console.log('ContextZero: Getting all user memories...');
+      console.log('ContextZero: Memory manager type:', this.memoryManager.constructor.name);
+      
+      if (this.memoryManager.getAllMemories) {
+        console.log('ContextZero: Using getAllMemories from HybridMemoryManager');
+        const memories = await this.memoryManager.getAllMemories();
+        console.log('ContextZero: Retrieved memories from cloud:', memories);
+        return memories;
+      } else {
+        console.log('ContextZero: Using fallback getMemories from storage');
+        const memories = await this.memoryManager.storage.getMemories();
+        return memories;
+      }
+    } catch (error) {
+      console.error('ContextZero: Error getting all memories:', error);
+      return [];
+    }
+  }
+
+  /**
    * Handle memory button click
    */
   async handleMemoryButtonClick() {
     try {
-      const inputText = this.getInputText();
-      if (!inputText || typeof inputText !== 'string' || !inputText.trim()) {
-        alert('Please enter a message first, then click the memory button to add relevant context.');
+      // First check authentication status
+      const authStatus = await this.checkAuthStatus();
+      
+      if (!authStatus.isAuthenticated) {
+        // Show sign-in dialog
+        SignInDialog.show({
+          onSignIn: async (authData) => {
+            console.log('ContextZero: User initiated sign in');
+            
+            // If authentication was successful, don't show dialog again
+            if (authData) {
+              console.log('ContextZero: Authentication successful, refreshing memories');
+              // Small delay to ensure auth is propagated
+              setTimeout(() => {
+                // Re-run the memory button click to show memories
+                this.handleMemoryButtonClick();
+              }, 500);
+            }
+          },
+          onClose: () => {
+            console.log('ContextZero: Sign in dialog closed');
+          }
+        });
+        return;
+      }
+      
+      // User is authenticated, show all their memories
+      if (!this.memoryManager) {
+        AlertDialog.show('Memory system not available. Please refresh the page and try again.', {
+          type: 'error'
+        });
         return;
       }
       
       // Show loading state
-      const button = document.querySelector('.contextzero-memory-btn');
-      const originalContent = button.innerHTML;
-      button.innerHTML = '⏳';
-      button.disabled = true;
-      
-      // Search for relevant memories
-      const memories = await this.memoryManager.searchMemories(inputText, {
-        limit: 10,
-        threshold: 0.3,
-        includeGeneral: true
-      });
-      
-      // Restore button
-      button.innerHTML = originalContent;
-      button.disabled = false;
-      
-      if (memories.length === 0) {
-        alert('No relevant memories found for your prompt.');
-        return;
+      const button = document.getElementById('contextzero-icon-button');
+      const originalIcon = button?.innerHTML;
+      if (button) {
+        button.innerHTML = `
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L13.09 8.26L22 9L13.09 9.74L12 22L10.91 9.74L2 9L10.91 8.26L12 2Z" fill="currentColor"/>
+          </svg>
+        `;
+        button.disabled = true;
       }
       
-      // Show memory selection modal
-      this.showMemoryModal(memories);
+      try {
+        // Get ALL memories (not filtered by input)
+        const memories = await this.getAllUserMemories();
+        
+        // Restore button
+        if (button) {
+          button.innerHTML = originalIcon || '🧠';
+          button.disabled = false;
+        }
+        
+        console.log('ContextZero Debug - Total memories:', memories.length);
+        
+        if (memories.length === 0) {
+          AlertDialog.show('No memories found. Start chatting to create your first memory!', {
+            type: 'info'
+          });
+          return;
+        }
+        
+        // Show all memories in modal
+        this.showMemoryModal(memories);
+        
+      } catch (error) {
+        console.error('ContextZero: Error fetching memories:', error);
+        
+        // Restore button on error
+        if (button) {
+          button.innerHTML = originalIcon || '🧠';
+          button.disabled = false;
+        }
+        
+        AlertDialog.show('Failed to load memories. Please try again.', {
+          type: 'error'
+        });
+      }
       
     } catch (error) {
       console.error('ContextZero: Error handling memory button click:', error);
-      
-      // Restore button on error
-      const button = document.querySelector('.contextzero-memory-btn');
-      if (button) {
-        button.innerHTML = '🧠';
-        button.disabled = false;
-      }
+      AlertDialog.show('An error occurred. Please refresh the page and try again.', {
+        type: 'error'
+      });
     }
   }
   
@@ -408,19 +591,35 @@ class ClaudeAdapter {
    * @param {Array} memories - Array of relevant memories
    */
   showMemoryModal(memories) {
+    console.log('ContextZero Debug - showMemoryModal called with memories:', memories);
+    
     // Remove existing modal
     const existingModal = document.querySelector('.contextzero-modal');
     if (existingModal) {
       existingModal.remove();
     }
     
-    // Create modal
-    const modal = new MemoryModal(memories, {
-      onSelect: (selectedMemories) => this.injectMemories(selectedMemories),
-      onClose: () => modal.remove()
-    });
-    
-    document.body.appendChild(modal.render());
+    try {
+      // Create modal
+      console.log('ContextZero Debug - Creating MemoryModal');
+      const modal = new MemoryModal(memories, {
+        onSelect: (selectedMemories) => this.injectMemories(selectedMemories),
+        onClose: () => modal.remove()
+      });
+      
+      console.log('ContextZero Debug - Modal created, rendering...');
+      const modalElement = modal.render();
+      console.log('ContextZero Debug - Modal element:', modalElement);
+      
+      document.body.appendChild(modalElement);
+      console.log('ContextZero Debug - Modal appended to body');
+      
+    } catch (error) {
+      console.error('ContextZero: Error creating modal:', error);
+      AlertDialog.show('Error opening memory dialog. Check console for details.', {
+        type: 'error'
+      });
+    }
   }
   
   /**
@@ -428,16 +627,34 @@ class ClaudeAdapter {
    * @param {Array} memories - Selected memories
    */
   injectMemories(memories) {
+    console.log('ContextZero: injectMemories called with', memories);
     if (memories.length === 0) return;
     
     const currentText = this.getInputText();
+    console.log('ContextZero: Current text:', currentText);
+    
     const formattedMemories = this.memoryManager.formatMemoriesForInjection(memories, {
       groupByCategory: true,
       maxLength: 800
     });
+    console.log('ContextZero: Formatted memories:', formattedMemories);
     
     const newText = currentText + formattedMemories;
+    console.log('ContextZero: New text to set:', newText);
+    
     this.setInputText(newText);
+    
+    // Focus the input
+    const input = this.getInputElement();
+    console.log('ContextZero: Input element after setting text:', input);
+    
+    if (input) {
+      input.focus();
+      
+      // Check if text was actually set
+      const verifyText = this.getInputText();
+      console.log('ContextZero: Text after setting:', verifyText);
+    }
     
     console.log(`ContextZero: Injected ${memories.length} memories into Claude prompt`);
   }
@@ -589,12 +806,12 @@ class ClaudeAdapter {
           break;
           
         case 'addSelectedTextAsMemory':
-          this.addSelectedTextAsMemory(request.text);
+          handleAddSelectedTextAsMemory.call(this, request.text);
           sendResponse({ success: true });
           break;
           
         case 'searchMemoriesWithText':
-          this.searchMemoriesWithText(request.text);
+          handleSearchMemoriesWithText.call(this, request.text);
           sendResponse({ success: true });
           break;
           
@@ -790,5 +1007,101 @@ observer.observe(document.body, {
   childList: true,
   subtree: true
 });
+
+// Handle adding selected text as memory to backend
+async function handleAddSelectedTextAsMemory(text) {
+  console.log('ContextZero: Adding selected text as memory to backend:', text);
+  
+  try {
+    // Get the adapter instance
+    const adapter = window.contextZeroClaude;
+    
+    if (!adapter || !adapter.memoryManager) {
+      AlertDialog.show('Memory system not initialized. Please refresh the page.', {
+        type: 'error'
+      });
+      return;
+    }
+    
+    const memoryManager = adapter.memoryManager;
+    
+    // Store the selected text as a memory with metadata
+    const metadata = {
+      type: 'note',
+      category: 'general',
+      source: 'context-menu',
+      platform: 'web',
+      url: window.location.href,
+      title: document.title,
+      timestamp: Date.now()
+    };
+    
+    // Store to backend
+    const result = await memoryManager.storeMemory(text, metadata);
+    
+    if (result && result.length > 0) {
+      // Show success message
+      AlertDialog.show(`Memory saved successfully!`, {
+        type: 'success'
+      });
+      
+      console.log('ContextZero: Memory stored successfully:', result);
+    } else {
+      throw new Error('Failed to store memory');
+    }
+    
+  } catch (error) {
+    console.error('ContextZero: Error adding memory:', error);
+    AlertDialog.show('Failed to save memory. Please try again.', {
+      type: 'error'
+    });
+  }
+}
+
+// Handle searching memories with selected text
+async function handleSearchMemoriesWithText(text) {
+  console.log('ContextZero: Searching memories with text:', text);
+  
+  try {
+    // Get the adapter instance
+    const adapter = window.contextZeroClaude;
+    
+    if (!adapter || !adapter.memoryManager) {
+      AlertDialog.show('Memory system not initialized. Please refresh the page.', {
+        type: 'error'
+      });
+      return;
+    }
+    
+    // Search for memories
+    const results = await adapter.memoryManager.searchMemories(text, {
+      limit: 20,
+      threshold: 0.5
+    });
+    
+    if (results.length === 0) {
+      AlertDialog.show(`No memories found matching: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`, {
+        type: 'info'
+      });
+      return;
+    }
+    
+    // Show results in a modal
+    const modal = new MemoryModal(results, {
+      title: `Search Results (${results.length})`,
+      onSelect: (selectedMemories) => adapter.injectMemories(selectedMemories),
+      onClose: () => modal.remove()
+    });
+    
+    const modalElement = modal.render();
+    document.body.appendChild(modalElement);
+    
+  } catch (error) {
+    console.error('ContextZero: Error searching memories:', error);
+    AlertDialog.show('Failed to search memories. Please try again.', {
+      type: 'error'
+    });
+  }
+}
 
 console.log('ContextZero: Claude content script loaded');

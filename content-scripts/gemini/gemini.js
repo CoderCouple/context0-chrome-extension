@@ -15,8 +15,22 @@ class GeminiAdapter {
       toolboxDrawer: 'toolbox-drawer .toolbox-drawer-container'
     };
     
-    this.memoryManager = new MemoryManager();
-    this.memoryExtractor = new MemoryExtractor();
+    // Initialize memory components - prefer HybridMemoryManager
+    try {
+      if (typeof HybridMemoryManager !== 'undefined') {
+        this.memoryManager = new HybridMemoryManager();
+        console.log('ContextZero: Using HybridMemoryManager for Gemini');
+      } else if (typeof MemoryManager !== 'undefined') {
+        this.memoryManager = new MemoryManager();
+        console.log('ContextZero: Fallback to MemoryManager for Gemini');
+      }
+      if (typeof MemoryExtractor !== 'undefined') {
+        this.memoryExtractor = new MemoryExtractor();
+      }
+    } catch (error) {
+      console.warn('ContextZero: Could not initialize memory components:', error.message);
+    }
+    
     this.isInitialized = false;
     this.lastProcessedMessage = '';
     this.allMemories = [];
@@ -877,4 +891,102 @@ observer.observe(document.body, {
   childList: true,
   subtree: true
 });
+
+// Handle adding selected text as memory to backend
+async function handleAddSelectedTextAsMemory(text) {
+  console.log('ContextZero: Adding selected text as memory to backend:', text);
+  
+  try {
+    // Get the adapter instance
+    const adapter = window.contextZeroGemini;
+    
+    if (!adapter || !adapter.memoryManager) {
+      AlertDialog.show('Memory system not initialized. Please refresh the page.', {
+        type: 'error'
+      });
+      return;
+    }
+    
+    const memoryManager = adapter.memoryManager;
+    
+    // Store the selected text as a memory with metadata
+    const metadata = {
+      type: 'note',
+      category: 'general',
+      source: 'context-menu',
+      platform: 'web',
+      url: window.location.href,
+      title: document.title,
+      timestamp: Date.now()
+    };
+    
+    // Store to backend
+    const result = await memoryManager.storeMemory(text, metadata);
+    
+    if (result && result.length > 0) {
+      // Show success message
+      AlertDialog.show(`Memory saved successfully!`, {
+        type: 'success'
+      });
+      
+      console.log('ContextZero: Memory stored successfully:', result);
+    } else {
+      throw new Error('Failed to store memory');
+    }
+    
+  } catch (error) {
+    console.error('ContextZero: Error adding memory:', error);
+    AlertDialog.show('Failed to save memory. Please try again.', {
+      type: 'error'
+    });
+  }
+}
+
+// Handle searching memories with selected text
+async function handleSearchMemoriesWithText(text) {
+  console.log('ContextZero: Searching memories with text:', text);
+  
+  try {
+    // Get the adapter instance
+    const adapter = window.contextZeroGemini;
+    
+    if (!adapter || !adapter.memoryManager) {
+      AlertDialog.show('Memory system not initialized. Please refresh the page.', {
+        type: 'error'
+      });
+      return;
+    }
+    
+    // Search for memories
+    const results = await adapter.memoryManager.searchMemories(text, {
+      limit: 20,
+      threshold: 0.5
+    });
+    
+    if (results.length === 0) {
+      AlertDialog.show(`No memories found matching: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`, {
+        type: 'info'
+      });
+      return;
+    }
+    
+    // Show results in a modal
+    const modal = new MemoryModal(results, {
+      title: `Search Results (${results.length})`,
+      onSelect: (selectedMemories) => adapter.injectMemories(selectedMemories),
+      onClose: () => modal.remove()
+    });
+    
+    const modalElement = modal.render();
+    document.body.appendChild(modalElement);
+    
+  } catch (error) {
+    console.error('ContextZero: Error searching memories:', error);
+    AlertDialog.show('Failed to search memories. Please try again.', {
+      type: 'error'
+    });
+  }
+}
+
+console.log('ContextZero: Gemini content script loaded');
 
